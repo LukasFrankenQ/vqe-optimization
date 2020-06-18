@@ -18,4 +18,4 @@ The so far available toy-example is in 'main.py'.
 
 For the experiments we require objects to (i) provide circuit architecture and translation to simulator backend methods (see utils.py) (ii) a Hamiltonian object capable of evaluating measurements on the ground of chosen physical principles (see physics.py) and (iii) an optimizer responsible for determining optimization steps and other helpful quantities such as the fubini-study metric (see optim.py).
 
-Please find the respective methods in the according directories.
+Please find the respective methods in the according files.
