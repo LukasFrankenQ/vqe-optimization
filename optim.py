@@ -50,7 +50,7 @@ class Optimizer:
         return deriv
     
     
-    def get_vanilla_fubini_term1(self, params, draw=False):
+    def get_first_fubini_term(self, params, draw=False):
         """
         compute naive fubini-study metric for parameters 'params'.
         Estimate expectation values according to figure 2 in
@@ -69,7 +69,7 @@ class Optimizer:
         
         num_params = len(params)
         reps = self.fubini_reps
-        fb = np.zeros((num_params, num_params))
+        first_term = np.zeros((num_params, num_params))
         
         """computing the first term"""
         for i, (con_one, a_one, c_one) in enumerate(zip(config_assign, gate_assign, counts)):
@@ -138,25 +138,109 @@ class Optimizer:
                                 self.circuit.backend, 
                                 shots=reps
                                     ).result().get_counts()
-                        #print(result)
                         self.rep_count += reps
                         
-                        result = result['0'*(self.circuit.n+1)] / reps
+                        try:
+                            result = result['0'*(self.circuit.n+1)] / reps
+                        except:
+                            result = 0.
+                    
                         val += 2 * result - 1
                         
-                fb[i, j+i] = val
-                fb[j+i, i] = val
-                
-                
-        """computing the second term"""
-        """to be added"""
-        
-        
-        
+                first_term[i, j+i] = val
+                first_term[j+i, i] = val
 
-        return fb
+        return first_term
                 
+
+        
+    def get_second_fubini_term(self, params, draw=False):
+        """
+        compute naive fubini-study metric for parameters 'params'.
+        Estimate expectation values according to figure 2 in
+        Y. Li  and  S. Benjamin:   
+        Efficient  Variational Quantum  Simulator  Incorporating  Active  Error  Minimization
+        Phys. Rev. X, 7:021050, Jun 2017
+        
+        Input:
+        list of current parameter configuration 'params'
+        
+        output:
+        np.array of dim(params) \times dim(params) with fb_metric
+        """
+        gates, param_config = self.circuit.get_param_config()
+        gate_assign, config_assign, counts = get_fubini_protocol(self.circuit.n, param_config)
+        
+        num_params = len(params)
+        reps = self.fubini_reps
+        dot_products = np.zeros(num_params)
+        
+        """computing the first term"""
+        for i, (con_one, a_one, c_one) in enumerate(zip(config_assign, gate_assign, counts)):
+            #for j, (con_two, a_two, c_two) in enumerate(zip(config_assign[i:], gate_assign[i:], counts[i:])):
                 
+            idx_one = con_one
+            val = 0.
+                
+            """specify array position of inserted gates"""
+            if param_config[con_one].find('layer') > -1 or param_config[con_one] == 'coll':
+                shift_one = self.circuit.n
+            else:
+                shift_one = 1
+                
+            """sums arise for parameters applied to sums of generators"""
+            for sums_one in range(c_one):
+                
+                deriv_gates = deepcopy(gates)
+                deriv_config = deepcopy(param_config)
+                
+                """insert additional gate for derivative parameter"""
+                insert_gates, insert_config = get_derivative_insertion(
+                                                    deriv_gates[a_one+sums_one], self.circuit.n)
+        
+                deriv_gates = deriv_gates[:a_one+shift_one] + insert_gates + deriv_gates[a_one+shift_one:]
+                deriv_config = deriv_config[:idx_one+1] + insert_config + deriv_config[idx_one+1:]
+                       
+
+                """insert gates to manipulate the ancilla"""
+                ancilla_gates = [Gate('h', self.circuit.n, 0)]#, Gate('pauli_x', self.circuit.n, 0)]
+                ancilla_config = ['none_gate']#, 'none_gate']
+                ancilla_gate_final = [Gate('h', self.circuit.n, 0)]
+                ancilla_config_final = ['none_gate']
+                        
+                        
+                deriv_gates = ancilla_gates + deriv_gates + ancilla_gate_final
+                deriv_config = ancilla_config + deriv_config + ancilla_config_final
+                        
+                deriv_circuit = self.circuit.to_qiskit(
+                                            fb=True,
+                                            params=params,
+                                            param_config=deriv_config,
+                                            gates=deriv_gates
+                                            )
+                
+                if draw:
+                    print(deriv_circuit)
+
+                result = execute(
+                        deriv_circuit, 
+                        self.circuit.backend, 
+                        shots=reps
+                            ).result().get_counts()
+                #print(result)
+                self.rep_count += reps
+                        
+                try:
+                    result = result['0'*(self.circuit.n+1)] / reps
+                except:
+                    result = 0.
+                    
+                val += 2 * result - 1
+        
+            dot_products[i] = val
+        second_fubini_term = np.outer(dot_products, dot_products)
+
+        return second_fubini_term
             
              
 
@@ -207,7 +291,4 @@ def get_derivative_insertion(gate, n):
         return [Gate('cz', target, n), Gate('cz', (target+1)%n, n)], ['none_gate', 'none_gate']
 
     
-    
-    
-
-    
+   
