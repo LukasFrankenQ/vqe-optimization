@@ -17,9 +17,33 @@ class Hamiltonian:
             
         elif self.hamiltonian_type == 'single_qubit_z':
             return None
-           
-        return h
+        
+        elif self.hamiltonian_type == 'transverse_ising':
+            n = self.n
+            unity = np.identity(2)
+            z = np.array([[1., 0.], [0., -1.]])
 
+            h = np.zeros((2**n, 2**n))
+
+            for i in range(n):
+                matrix = 1.
+                if i == n-1:
+                    matrix = np.kron(matrix, z)
+                    for _ in range(i-1):
+                        matrix = np.kron(matrix, unity)
+                else:
+                    for _ in range(i):
+                        matrix = np.kron(matrix, unity)
+        
+                matrix = np.kron(matrix, z)
+                if i < n-1:
+                    matrix = np.kron(matrix, z)
+                for _ in range(n-2-i):
+                    matrix = np.kron(matrix, unity)
+                h += matrix
+                
+        return h
+    
 
     def get_boundaries(self):
         if self.hamiltonian_type == 'sk':
@@ -61,4 +85,16 @@ class Hamiltonian:
             total += float(count)
         avg /= total
         return (self.max_value - avg) / (self.max_value - self.min_value)
+    
+    def multiterm(self, circuit, params):
+        pass
+        #"""Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
+        #if self.hamiltonian_type == "transverse_field_ising":
+        #    energy = 0.
+            
+            
+            
+            
+        
+        
 
