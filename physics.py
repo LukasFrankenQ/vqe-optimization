@@ -1,5 +1,8 @@
 import numpy as np
 import random as rd
+from qiskit import execute, QuantumCircuit
+from copy import deepcopy
+
 
 class Hamiltonian:
     def __init__(self, n, hamiltonian_type='sk'):
@@ -41,7 +44,7 @@ class Hamiltonian:
                 for _ in range(n-2-i):
                     matrix = np.kron(matrix, unity)
                 h += matrix
-                
+                 
         return h
     
 
@@ -62,7 +65,7 @@ class Hamiltonian:
                 if energy > maximum:
                     maximum = energy
 
-        elif self.hamiltonian_type == 'single_qubit_z':
+        elif self.hamiltonian_type == 'single_qubit_z' or self.hamiltonian_type == 'transverse_ising':
             minimum = -1. * self.n 
             maximum = 1. * self.n 
                     
@@ -70,15 +73,17 @@ class Hamiltonian:
 
     
     """takes measured dictionary and return value between 0 and 1"""
-    def eval_dict(self, results):
+    def eval_dict(self, results, hamiltonian_type=None):
+        hamiltonian_type = hamiltonian_type or self.hamiltonian_type
+        
         avg = 0.
         total = 0.
         for meas, count in results.items():
             meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
             
-            if self.hamiltonian_type == 'sk':
+            if hamiltonian_type == 'sk' or hamiltonian_type == "transverse_ising":
                 energy = np.dot(meas, np.matmul(self.matrix, meas))
-            elif self.hamiltonian_type == 'single_qubit_z':
+            elif hamiltonian_type == 'single_qubit_z':
                 energy = np.dot(np.ones(self.n), meas)
                 
             avg += float(count) * energy
@@ -86,15 +91,31 @@ class Hamiltonian:
         avg /= total
         return (self.max_value - avg) / (self.max_value - self.min_value)
     
-    def multiterm(self, circuit, params):
-        pass
-        #"""Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
-        #if self.hamiltonian_type == "transverse_field_ising":
-        #    energy = 0.
-            
-            
-            
-            
-        
-        
+    
+    """Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
+    def multiterm(self, circuit, params, reps=100, J=0., t=1.):
+        if self.hamiltonian_type == "transverse_ising":
+            energy = 0.
+            """compute configuration score on first term"""
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
 
+            for meas, count in result.items():
+                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                shift = np.array(list(meas)[1:] + [list(meas)[0]])
+                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
+            
+            """compute configuration score on second term"""
+            circuit = deepcopy(circuit)
+            circuit.add_layer('h', 'none')
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+            for meas, count in result.items():
+                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                energy += np.dot(np.ones(self.n), meas) * (-t) * float(count) / float(reps)
+        
+        return (self.max_value - energy) / (self.max_value - self.min_value)
+            
+            
+            
+            

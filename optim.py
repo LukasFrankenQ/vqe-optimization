@@ -6,7 +6,7 @@ from physics import Hamiltonian
 from utils import Circuit, Gate
 
 class Optimizer:
-    def __init__(self, x=None, circuit=None, grad_reps=100, fubini_reps=100, max_iter=100, lr=0.1):
+    def __init__(self, x=None, circuit=None, grad_reps=100, fubini_reps=100, max_iter=100, lr=0.5):
         self.x0 = x
         self.circuit = circuit
         self.rep_count = 0
@@ -15,7 +15,7 @@ class Optimizer:
         self.fubini_reps = fubini_reps
         
     
-    def get_gradient(self, obj, x):
+    def get_gradient(self, H, x):
         """
         Determining vanilla gradient using the Gradient shift rule as in
         https://arxiv.org/abs/1811.11184
@@ -27,25 +27,44 @@ class Optimizer:
         Output:
         gradient as list with dimension equal to 'x'
         """
+        """assuming eigenvalue spectrum {+- 1} => r = max{+-1} and resulting in shift s:"""
+        r = 1.
+        s = np.pi / (4 * r)
+        
         x = x or self.x0
         deriv = np.zeros(len(x))
         deriv = [0. for _ in range(len(x))]
-        for i in range(len(x)):
-            upper_shift = deepcopy(x)
-            upper_shift[i] += np.pi/2        
+        for i in range(len(x)):      
             
-            circuit_upper = self.circuit.to_qiskit(params=upper_shift)
-            result_upper = execute(circuit_upper, self.circuit.backend, shots=self.grad_reps).result().get_counts()
-            self.rep_count += self.grad_reps
+            if H.hamiltonian_type == "transverse_ising":
+                upper_shift = deepcopy(x)
+                upper_shift[i] += s
+                
+                lower_shift = deepcopy(x)
+                lower_shift[i] -= s
+                
+                upper_val = H.multiterm(self.circuit, upper_shift, reps=self.grad_reps)
+                lower_val = H.multiterm(self.circuit, lower_shift, reps=self.grad_reps)
+                
+                deriv[i] = r * (upper_val - lower_val) * self.lr
+                
+            else:
+                upper_shift = deepcopy(x)
+                upper_shift[i] += s  
+                
+                circuit_upper = self.circuit.to_qiskit(params=upper_shift)
+                result_upper = execute(circuit_upper, self.circuit.backend, shots=self.grad_reps).result().get_counts()
+                self.rep_count += self.grad_reps
             
-            lower_shift = deepcopy(x)
-            lower_shift[i] -= np.pi/2
+                lower_shift = deepcopy(x)
+                lower_shift[i] -= s
             
-            circuit_lower = self.circuit.to_qiskit(params=lower_shift)
-            result_lower = execute(circuit_lower, self.circuit.backend, shots=self.grad_reps).result().get_counts()
-            self.rep_count += self.grad_reps
+            
+                circuit_lower = self.circuit.to_qiskit(params=lower_shift)
+                result_lower = execute(circuit_lower, self.circuit.backend, shots=self.grad_reps).result().get_counts()
+                self.rep_count += self.grad_reps
         
-            deriv[i] = self.lr * (obj(result_upper) - obj(result_lower))
+                deriv[i] = r * (H.eval_dict(result_upper) - H.eval_dict(result_lower)) * self.lr
         
         return deriv
     
@@ -71,7 +90,6 @@ class Optimizer:
         reps = self.fubini_reps
         first_term = np.zeros((num_params, num_params))
         
-        """computing the first term"""
         for i, (con_one, a_one, c_one) in enumerate(zip(config_assign, gate_assign, counts)):
             for j, (con_two, a_two, c_two) in enumerate(zip(config_assign[i:], gate_assign[i:], counts[i:])):
                 
@@ -175,9 +193,7 @@ class Optimizer:
         reps = self.fubini_reps
         dot_products = np.zeros(num_params)
         
-        """computing the first term"""
         for i, (con_one, a_one, c_one) in enumerate(zip(config_assign, gate_assign, counts)):
-            #for j, (con_two, a_two, c_two) in enumerate(zip(config_assign[i:], gate_assign[i:], counts[i:])):
                 
             idx_one = con_one
             val = 0.
@@ -201,7 +217,6 @@ class Optimizer:
                 deriv_gates = deriv_gates[:a_one+shift_one] + insert_gates + deriv_gates[a_one+shift_one:]
                 deriv_config = deriv_config[:idx_one+1] + insert_config + deriv_config[idx_one+1:]
                        
-
                 """insert gates to manipulate the ancilla"""
                 ancilla_gates = [Gate('h', self.circuit.n, 0)]#, Gate('pauli_x', self.circuit.n, 0)]
                 ancilla_config = ['none_gate']#, 'none_gate']
@@ -291,4 +306,4 @@ def get_derivative_insertion(gate, n):
         return [Gate('cz', target, n), Gate('cz', (target+1)%n, n)], ['none_gate', 'none_gate']
 
     
-   
+        

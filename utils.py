@@ -179,15 +179,15 @@ def format_coord(x, y):
         return 'x=%1.4f, y=%1.4f' % (x, y)
 
     
-def plot_fubini(matrices, iterations):
+def plot_fubini(matrices, iterations, savename=''):
     
     fig, axs = plt.subplots(1, len(matrices), figsize=(20, 2))
     for i in range(len(matrices)):
-        axs[i].imshow(matrices[i], interpolation='nearest')
+        axs[i].imshow(matrices[i], interpolation='nearest', vmin=0, vmax=1)
         axs[i].set_title('iter: '+str(iterations[i]))
 
         numrows, numcols = matrices[i].shape
 
         axs[i].format_coord = format_coord
     plt.show()
-    fig.savefig('fubini.png', bbox_inches="tight",  dpi=1000)
+    fig.savefig('fubini_'+savename+'.png', bbox_inches="tight",  dpi=1000)
