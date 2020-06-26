@@ -189,5 +189,20 @@ def plot_fubini(matrices, iterations, savename=''):
         numrows, numcols = matrices[i].shape
 
         axs[i].format_coord = format_coord
+    plt.tight_layout()
     plt.show()
-    fig.savefig('fubini_'+savename+'.png', bbox_inches="tight",  dpi=1000)
+    fig.savefig('saves/fubini_'+savename+'.png', bbox_inches="tight",  dpi=1000)
+
+
+def plot_score(score, savename=''):
+    
+    fig, axs = plt.subplots(1, 1, figsize=(5, 5))
+
+    axs.plot([i for i in range(len(score))], score, c="royalblue")
+    axs.set_title('normed energy during optimization')
+    axs.set_xlabel('iteration')
+    axs.set_ylabel('normed energy')
+
+    plt.show()
+    fig.savefig('saves/score_'+savename+'.png', bbox_inches="tight",  dpi=1000)
+    
