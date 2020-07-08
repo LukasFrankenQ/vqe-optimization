@@ -21,7 +21,7 @@ class Hamiltonian:
         elif self.hamiltonian_type == 'single_qubit_z':
             return None
         
-        elif self.hamiltonian_type == 'transverse_ising':
+        elif self.hamiltonian_type == 'transverse_ising' or self.hamiltonian_type == 'spin_chain':
             n = self.n
             unity = np.identity(2)
             z = np.array([[1., 0.], [0., -1.]])
@@ -68,6 +68,10 @@ class Hamiltonian:
         elif self.hamiltonian_type == 'single_qubit_z' or self.hamiltonian_type == 'transverse_ising':
             minimum = -1. * self.n 
             maximum = 1. * self.n 
+            
+        elif self.hamiltonian_type == 'spin_chain':
+            minimum = -2. * self.n 
+            maximum = 2. * self.n
                     
         return maximum, minimum
 
@@ -93,7 +97,7 @@ class Hamiltonian:
     
     
     """Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
-    def multiterm(self, circuit, params, reps=100, J=0., t=1.):
+    def multiterm(self, circuit, params, reps=100, J=1., t=1.):
         if self.hamiltonian_type == "transverse_ising":
             energy = 0.
             """compute configuration score on first term"""
@@ -106,6 +110,51 @@ class Hamiltonian:
                 energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
             
             """compute configuration score on second term"""
+            circuit = deepcopy(circuit)
+            circuit.add_layer('h', 'none')
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+            for meas, count in result.items():
+                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                energy += np.dot(np.ones(self.n), meas) * (-t) * float(count) / float(reps)
+                
+        
+        elif self.hamiltonian_type == 'spin_chain':
+            energy = 0.
+            
+            """compute configuration score on z-axis correlation term"""
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+
+            for meas, count in result.items():
+                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                shift = np.array(list(meas)[1:] + [list(meas)[0]])
+                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
+                
+            """compute configuration score on x-axis correlation term"""
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            for i in range(self.n):
+                curr_circuit.h(i)
+            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+
+            for meas, count in result.items():
+                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                shift = np.array(list(meas)[1:] + [list(meas)[0]])
+                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
+                
+            """compute configuration score on y-axis correlation term"""
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            for i in range(self.n):
+                curr_circuit.rz(np.pi, i)
+                curr_circuit.rx(np.pi/2, i)
+            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+
+            for meas, count in result.items():
+                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                shift = np.array(list(meas)[1:] + [list(meas)[0]])
+                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
+            
+            """compute configuration score on field term"""
             circuit = deepcopy(circuit)
             circuit.add_layer('h', 'none')
             curr_circuit = circuit.to_qiskit(params=deepcopy(params))
