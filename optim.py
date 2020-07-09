@@ -36,7 +36,7 @@ class Optimizer:
         deriv = [0. for _ in range(len(x))]
         for i in range(len(x)):      
             
-            if H.hamiltonian_type == "transverse_ising":
+            if H.hamiltonian_type == "transverse_ising" or H.hamiltonian_type == "spin_chain":
                 upper_shift = deepcopy(x)
                 upper_shift[i] += s
                 
@@ -242,7 +242,6 @@ class Optimizer:
                         self.circuit.backend, 
                         shots=reps
                             ).result().get_counts()
-                #print(result)
                 self.rep_count += reps
                         
                 try:
@@ -256,6 +255,108 @@ class Optimizer:
         second_fubini_term = np.outer(dot_products, dot_products)
 
         return second_fubini_term
+    
+    
+    
+    
+################################################################################
+
+
+    def simulate_fubini_metric(self, params, draw=False):
+        """
+        Simulate metric
+        
+        Input:
+        list of current parameter configuration 'params'
+        
+        output:
+        np.array of dim(params) \times dim(params) with fb_metric
+        """
+        backend = Aer.get_backend("statevector_simulator")
+        statevectors = []
+        
+        gates, param_config = self.circuit.get_param_config()
+        gate_assign, config_assign, counts = get_fubini_protocol(self.circuit.n, param_config)
+        
+        num_params = len(params)
+        
+        for i, (con_one, a_one, c_one) in enumerate(zip(config_assign, gate_assign, counts)):
+                
+            idx_one = con_one
+            current_state = np.array([0. + 0.j] for _ in range(2**num_params)
+                
+            """specify array position of inserted gates"""
+            if param_config[con_one].find('layer') > -1 or param_config[con_one] == 'coll':
+                shift_one = self.circuit.n
+            else:
+                shift_one = 1
+                
+            """sums arise for parameters applied to sums of generators"""
+            for sums_one in range(c_one):
+                
+                deriv_gates = deepcopy(gates)
+                deriv_config = deepcopy(param_config)
+                
+                """insert additional gate for derivative parameter"""
+                insert_gates, insert_config = get_derivative_insertion(
+                                                    deriv_gates[a_one+sums_one], self.circuit.n)
+        
+                deriv_gates = deriv_gates[:a_one+shift_one] + insert_gates + deriv_gates[a_one+shift_one:]
+                deriv_config = deriv_config[:idx_one+1] + insert_config + deriv_config[idx_one+1:]     
+                              
+                deriv_circuit = self.circuit.to_qiskit(
+                                            params=params,
+                                            param_config=deriv_config,
+                                            gates=deriv_gates
+                                            )
+                
+                if draw:
+                    print(deriv_circuit)
+
+                current_state += execute(
+                        deriv_circuit, 
+                        backend, 
+                            ).result().get_statevector()
+        
+            statevectors += current_state
+        
+        """get vanilla circuit state"""
+        vanilla_circuit = self.circuit.to_qiskit(params=params)
+        vanilla_state += execute(
+                        vanilla_circuit, 
+                        backend, 
+                            ).result().get_statevector()
+                                     
+        """get first fubini term"""
+        fb1 = np.array([[0. + 0.j for _ in range(num_params)] for _ in range(num_params)])
+                                     
+        
+        for i, state1 in enumerate(statevector):
+            for j, state2 in enumerate(statevector[:i+1]):
+         
+                fb1[i,j] = np.inner(np.conj(state1), state2)
+                if j < i:
+                fb1[j,i] = np.conj(fb1[i,j])
+            
+        """get second fubini term"""    
+        inner_products = [np.inner(np.conj(statevector[i]), vanilla_state) for i in range(num_params)]
+        
+        fb2 = np.outer(np.conj(inner_products), inner_products)
+        
+        """get full fubini-study metric"""
+        fb = fb1 - fb2
+        fb = (fb + np.conj(fb)) / 2.
+                    
+        return fb, fb1, fb2
+
+
+
+
+
+
+
+
+################################################################################
             
              
 
