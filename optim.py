@@ -1,18 +1,27 @@
 from copy import deepcopy
 from qiskit import Aer, execute
+from qiskit import QuantumCircuit
 import numpy as np
 
 from physics import Hamiltonian
 from utils import Circuit, Gate
 
 class Optimizer:
-    def __init__(self, x=None, circuit=None, grad_reps=100, fubini_reps=100, max_iter=100, lr=0.5):
+    def __init__(self, x=None, circuit=None, n=4, grad_reps=100, fubini_reps=100, max_iter=100, lr=1., rot_circuit=False):
         self.x0 = x
+        self.n = n
         self.circuit = circuit
         self.rep_count = 0
         self.grad_reps = 100
         self.lr = lr
         self.fubini_reps = fubini_reps
+        self.rot_circuit = rot_circuit
+        if self.rot_circuit:
+            """define initial rotation"""
+            self.init_circuit = QuantumCircuit(self.n+1, self.n+1)
+            for qubit in range(self.n):
+                self.init_circuit.rz(np.pi/4., qubit)
+                self.init_circuit.ry(np.pi/4., qubit)
         
     
     def get_gradient(self, H, x):
@@ -32,11 +41,16 @@ class Optimizer:
         s = np.pi / (4 * r)
         
         x = x or self.x0
-        deriv = np.zeros(len(x))
         deriv = [0. for _ in range(len(x))]
+        
         for i in range(len(x)):      
             
-            if H.hamiltonian_type == "transverse_ising" or H.hamiltonian_type == "spin_chain":
+            if (
+                H.hamiltonian_type == "transverse_ising" or 
+                H.hamiltonian_type == "spin_chain" or 
+                H.hamiltonian_type == "rot_single_qubit_z"
+                ):
+                
                 upper_shift = deepcopy(x)
                 upper_shift[i] += s
                 
@@ -130,14 +144,12 @@ class Optimizer:
                 
                         deriv_gates = deriv_gates[:a_one+shift_one] + insert_gates + deriv_gates[a_one+shift_one:]
                         deriv_config = deriv_config[:idx_one+1] + insert_config + deriv_config[idx_one+1:]
-                       
-
+                        
                         """insert gates to manipulate the ancilla"""
                         ancilla_gates = [Gate('h', self.circuit.n, 0)]#, Gate('pauli_x', self.circuit.n, 0)]
                         ancilla_config = ['none_gate']#, 'none_gate']
                         ancilla_gate_final = [Gate('h', self.circuit.n, 0)]
                         ancilla_config_final = ['none_gate']
-                        
                         
                         deriv_gates = ancilla_gates + deriv_gates + ancilla_gate_final
                         deriv_config = ancilla_config + deriv_config + ancilla_config_final
@@ -148,8 +160,12 @@ class Optimizer:
                                                 param_config=deriv_config,
                                                 gates=deriv_gates
                                                 )
+                        
                         if draw:
                             print(deriv_circuit)
+                            
+                        if self.rot_circuit:
+                            deriv_circuit = self.init_circuit + deriv_circuit
 
                         result = execute(
                                 deriv_circuit, 
@@ -234,6 +250,9 @@ class Optimizer:
                                             gates=deriv_gates
                                             )
                 
+                if self.rot_circuit:
+                    deriv_circuit = self.init_circuit + deriv_circuit
+                
                 if draw:
                     print(deriv_circuit)
 
@@ -283,7 +302,7 @@ class Optimizer:
         for i, (con_one, a_one, c_one) in enumerate(zip(config_assign, gate_assign, counts)):
                 
             idx_one = con_one
-            current_state = np.array([0. + 0.j] for _ in range(2**num_params)
+            current_state = np.array([0. + 0.j] for _ in range(2**num_params))
                 
             """specify array position of inserted gates"""
             if param_config[con_one].find('layer') > -1 or param_config[con_one] == 'coll':
@@ -310,6 +329,9 @@ class Optimizer:
                                             gates=deriv_gates
                                             )
                 
+                if self.rot_circuit:
+                    deriv_circuit = self.init_circuit + deriv_circuit
+                
                 if draw:
                     print(deriv_circuit)
 
@@ -322,6 +344,8 @@ class Optimizer:
         
         """get vanilla circuit state"""
         vanilla_circuit = self.circuit.to_qiskit(params=params)
+        if self.rot_circuit:
+            vanilla_circuit = self.init_circuit + vanilla_circuit
         vanilla_state += execute(
                         vanilla_circuit, 
                         backend, 
@@ -336,7 +360,7 @@ class Optimizer:
          
                 fb1[i,j] = np.inner(np.conj(state1), state2)
                 if j < i:
-                fb1[j,i] = np.conj(fb1[i,j])
+                    fb1[j,i] = np.conj(fb1[i,j])
             
         """get second fubini term"""    
         inner_products = [np.inner(np.conj(statevector[i]), vanilla_state) for i in range(num_params)]

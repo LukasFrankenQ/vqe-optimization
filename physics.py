@@ -5,11 +5,23 @@ from copy import deepcopy
 
 
 class Hamiltonian:
-    def __init__(self, n, hamiltonian_type='sk'):
+    def __init__(self, 
+                 n, 
+                 hamiltonian_type='sk', 
+                 phi=None, 
+                 t=1., 
+                 rotate=False, 
+                 init_circuit=None, 
+                 append_circuit=None):
         self.n = n
+        self.t = t
         self.hamiltonian_type = hamiltonian_type
         self.matrix = self.get_matrix()
         self.max_value, self.min_value = self.get_boundaries()
+        self.phi = phi
+        self.rotate = rotate
+        self.init_circuit = init_circuit
+        self.append_circuit = append_circuit
         
         
     def get_matrix(self):
@@ -18,7 +30,7 @@ class Hamiltonian:
             h = np.array([[0. for _ in range(k+1)]+[rd.choice(vals) for _ in range(self.n-k-1)] 
                           for k in range(self.n)])
             
-        elif self.hamiltonian_type == 'single_qubit_z':
+        elif self.hamiltonian_type == 'single_qubit_z' or self.hamiltonian_type == 'rot_single_qubit_z':
             return None
         
         elif self.hamiltonian_type == 'transverse_ising' or self.hamiltonian_type == 'spin_chain':
@@ -65,7 +77,24 @@ class Hamiltonian:
                 if energy > maximum:
                     maximum = energy
 
-        elif self.hamiltonian_type == 'single_qubit_z' or self.hamiltonian_type == 'transverse_ising':
+        elif self.hamiltonian_type == 'transverse_ising':
+
+            if self.n%2==0:
+                alphas = [np.pi / self.n*(2*i+1) for i in range(self.n//2)]
+                E_gs = 0.
+            else:
+                alphas = [np.pi / self.n*(2*i+2) for i in range(self.n//2)]
+                E_gs = - 1. - self.t 
+
+            E_gs -= 2*sum([np.sqrt(1+2*np.cos(alphas[i])*self.t+self.t**2) for i in range(self.n//2)])
+            
+            """normalization is commented out"""
+            """E_gs /= N"""
+
+            maximum = (-1.)*E_gs
+            minimum = E_gs
+                    
+        elif self.hamiltonian_type == 'single_qubit_z' or self.hamiltonian_type == 'rot_single_qubit_z':
             minimum = -1. * self.n 
             maximum = 1. * self.n 
             
@@ -87,7 +116,7 @@ class Hamiltonian:
             
             if hamiltonian_type == 'sk' or hamiltonian_type == "transverse_ising":
                 energy = np.dot(meas, np.matmul(self.matrix, meas))
-            elif hamiltonian_type == 'single_qubit_z':
+            elif hamiltonian_type == 'single_qubit_z' or hamiltonian_type == 'rot_single_qubit_z':
                 energy = np.dot(np.ones(self.n), meas)
                 
             avg += float(count) * energy
@@ -97,11 +126,21 @@ class Hamiltonian:
     
     
     """Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
-    def multiterm(self, circuit, params, reps=100, J=1., t=1.):
+    def multiterm(self, circuit, params, reps=100, J=1.):
         if self.hamiltonian_type == "transverse_ising":
-            energy = 0.
+            energy = 0.           
+            
             """compute configuration score on first term"""
-            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            if self.append_circuit is not None:
+                curr_circuit = circuit.to_qiskit(params=deepcopy(params), measure=False)
+            else:
+                curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+                
+            if self.init_circuit is not None:
+                curr_circuit = self.init_circuit + curr_circuit
+            if self.append_circuit is not None:
+                curr_circuit = curr_circuit + self.append_circuit
+                
             result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
 
             for meas, count in result.items():
@@ -110,13 +149,36 @@ class Hamiltonian:
                 energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
             
             """compute configuration score on second term"""
-            circuit = deepcopy(circuit)
-            circuit.add_layer('h', 'none')
-            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
+            for i in range(self.n):
+                curr_circuit.h(i)
+      
             result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
             for meas, count in result.items():
                 meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                energy += np.dot(np.ones(self.n), meas) * (-t) * float(count) / float(reps)
+                energy += np.dot(np.ones(self.n), meas) * (-self.t) * float(count) / float(reps)
+                
+                
+        elif self.hamiltonian_type == 'rot_single_qubit_z':
+            energy = 0.
+            
+            """determine coefficient by rotation angle"""
+            Jz = np.cos(self.phi)**2
+            Jy = np.sin(self.phi)**2
+            
+            """eval performance on z axis"""
+            z_circuit = circuit.to_qiskit(params=deepcopy(params))
+            result = execute(z_circuit, circuit.backend, shots=reps).result().get_counts()
+            energy += Jz * self.eval_dict(result)
+            
+            """eval performance on y axis"""
+            y_circuit = circuit.to_qiskit(params=deepcopy(params))
+            for i in range(self.n):
+                y_circuit.rz(np.pi, i)
+                y_circuit.rx(np.pi/2, i)
+            result = execute(y_circuit, circuit.backend, shots=reps).result().get_counts()
+            energy += Jy * self.eval_dict(result)
+            
+            return energy
                 
         
         elif self.hamiltonian_type == 'spin_chain':
