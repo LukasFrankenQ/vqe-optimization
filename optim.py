@@ -24,7 +24,7 @@ class Optimizer:
                 self.init_circuit.ry(np.pi/4., qubit)
         
     
-    def get_gradient(self, H, x):
+    def get_gradient(self, H, x, reps=None):
         """
         Determining vanilla gradient using the Gradient shift rule as in
         https://arxiv.org/abs/1811.11184
@@ -42,6 +42,8 @@ class Optimizer:
         
         x = x or self.x0
         deriv = [0. for _ in range(len(x))]
+
+        reps = reps or self.grad_reps
         
         for i in range(len(x)):      
             
@@ -57,8 +59,8 @@ class Optimizer:
                 lower_shift = deepcopy(x)
                 lower_shift[i] -= s
                 
-                upper_val = H.multiterm(self.circuit, upper_shift, reps=self.grad_reps)
-                lower_val = H.multiterm(self.circuit, lower_shift, reps=self.grad_reps)
+                upper_val = H.multiterm(self.circuit, upper_shift, reps=reps)
+                lower_val = H.multiterm(self.circuit, lower_shift, reps=reps)
                 
                 deriv[i] = r * (upper_val - lower_val) * self.lr
                 
@@ -67,16 +69,16 @@ class Optimizer:
                 upper_shift[i] += s  
                 
                 circuit_upper = self.circuit.to_qiskit(params=upper_shift)
-                result_upper = execute(circuit_upper, self.circuit.backend, shots=self.grad_reps).result().get_counts()
-                self.rep_count += self.grad_reps
+                result_upper = execute(circuit_upper, self.circuit.backend, shots=reps).result().get_counts()
+                self.rep_count += reps
             
                 lower_shift = deepcopy(x)
                 lower_shift[i] -= s
             
             
                 circuit_lower = self.circuit.to_qiskit(params=lower_shift)
-                result_lower = execute(circuit_lower, self.circuit.backend, shots=self.grad_reps).result().get_counts()
-                self.rep_count += self.grad_reps
+                result_lower = execute(circuit_lower, self.circuit.backend, shots=reps).result().get_counts()
+                self.rep_count += reps
         
                 deriv[i] = r * (H.eval_dict(result_upper) - H.eval_dict(result_lower)) * self.lr
         

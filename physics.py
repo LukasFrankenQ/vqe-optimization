@@ -138,10 +138,12 @@ class Hamiltonian:
                 
             if self.init_circuit is not None:
                 curr_circuit = self.init_circuit + curr_circuit
+            
             if self.append_circuit is not None:
-                curr_circuit = curr_circuit + self.append_circuit
-                
-            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+                result = execute(curr_circuit+self.append_circuit, circuit.backend, shots=reps).result().get_counts()
+            else:
+                result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+
 
             for meas, count in result.items():
                 meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
@@ -152,7 +154,11 @@ class Hamiltonian:
             for i in range(self.n):
                 curr_circuit.h(i)
       
-            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+            if self.append_circuit is not None:
+                result = execute(curr_circuit+self.append_circuit, circuit.backend, shots=reps).result().get_counts()
+            else:
+                result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+            
             for meas, count in result.items():
                 meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
                 energy += np.dot(np.ones(self.n), meas) * (-self.t) * float(count) / float(reps)
