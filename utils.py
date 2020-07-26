@@ -180,18 +180,20 @@ def format_coord(x, y):
     else:
         return 'x=%1.4f, y=%1.4f' % (x, y)
 
+
+def convert_complex_to_float(matrix):
+    hold = np.array([np.array([0. for _ in range(len(matrix[0]))]) for _ in range(len(matrix[0]))])
+    if isinstance(matrix[0][0], complex):
+        for i in range(len(matrix)):
+            for j in range(len(matrix[0])):
+                    hold[i][j] = np.real(matrix[i][j])
+
+    return hold
+
+
     
 def plot_fubini(matrices, iterations, savename=''):
-    hold = [np.array([np.array([0. for _ in range(len(matrices[0][0]))]) for _ in range(len(matrices[0]))]) 
-            for _ in range(len(matrices))]
-    if isinstance(matrices[0][0][0], complex):
-        for i in range(len(matrices)):
-            for j in range(len(matrices[0])):
-                for k in range(len(matrices[0][0])):
-                    hold[i][j][k] = np.real(matrices[i][j][k])
-         
-    print(hold)
-    matrices = hold
+    
     fig, axs = plt.subplots(1, len(matrices), figsize=(20, 2))
     for i in range(len(matrices)):
         axs[i].imshow(matrices[i], interpolation='nearest', vmin=0, vmax=1)
