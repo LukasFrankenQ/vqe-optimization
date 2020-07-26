@@ -4,7 +4,7 @@ from qiskit import QuantumCircuit
 import numpy as np
 
 from physics import Hamiltonian
-from utils import Circuit, Gate
+from utils import Circuit, Gate, convert_complex_to_float
 
 class Optimizer:
     def __init__(self, x=None, circuit=None, n=4, grad_reps=100, fubini_reps=100, max_iter=100, lr=1., rot_circuit=False):
@@ -285,6 +285,14 @@ class Optimizer:
 
 
     def simulate_fubini_metric(self, params, draw=False):
+        
+        if self.rot_circuit:
+            """define initial rotation"""
+            self.init_circuit = QuantumCircuit(self.n, self.n)
+            for qubit in range(self.n):
+                self.init_circuit.h(qubit)        # LINE UNDER INVESTIGATION
+                self.init_circuit.rz(np.pi/4., qubit)
+                self.init_circuit.ry(np.pi/4., qubit)
         """
         Simulate metric
         
@@ -372,10 +380,14 @@ class Optimizer:
         
         fb2 = np.outer(np.conj(inner_products), inner_products)
         
+        """convert to float"""
+        fb1 = convert_complex_to_float(fb1)
+        fb2 = convert_complex_to_float(fb2)
+
         """get full fubini-study metric"""
         fb = fb1 - fb2
         fb = (fb + np.conj(fb)) / 2.
-                    
+        
         return fb, fb1, fb2
 
 
