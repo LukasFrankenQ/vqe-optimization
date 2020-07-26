@@ -340,11 +340,6 @@ class Optimizer:
                 if draw:
                     print(deriv_circuit)
 
-                result = execute(
-                        deriv_circuit, 
-                        backend, 
-                            ).result().get_statevector()
-                
                 current_state += execute(
                         deriv_circuit, 
                         backend, 
