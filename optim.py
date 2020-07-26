@@ -305,7 +305,8 @@ class Optimizer:
         for i, (con_one, a_one, c_one) in enumerate(zip(config_assign, gate_assign, counts)):
                 
             idx_one = con_one
-            current_state = np.array([0. + 0.j] for _ in range(2**num_params))
+            current_state = np.array([0. + 0.j for _ in range(2**self.n)])
+            vanilla_state = np.array([0. + 0.j for _ in range(2**self.n)])
                 
             """specify array position of inserted gates"""
             if param_config[con_one].find('layer') > -1 or param_config[con_one] == 'coll':
@@ -321,7 +322,7 @@ class Optimizer:
                 
                 """insert additional gate for derivative parameter"""
                 insert_gates, insert_config = get_derivative_insertion(
-                                                    deriv_gates[a_one+sums_one], self.circuit.n)
+                                                    deriv_gates[a_one+sums_one], self.circuit.n, simulation=True)
         
                 deriv_gates = deriv_gates[:a_one+shift_one] + insert_gates + deriv_gates[a_one+shift_one:]
                 deriv_config = deriv_config[:idx_one+1] + insert_config + deriv_config[idx_one+1:]     
@@ -329,7 +330,8 @@ class Optimizer:
                 deriv_circuit = self.circuit.to_qiskit(
                                             params=params,
                                             param_config=deriv_config,
-                                            gates=deriv_gates
+                                            gates=deriv_gates,
+                                            measure=False
                                             )
                 
                 if self.rot_circuit:
@@ -338,12 +340,17 @@ class Optimizer:
                 if draw:
                     print(deriv_circuit)
 
+                result = execute(
+                        deriv_circuit, 
+                        backend, 
+                            ).result().get_statevector()
+                
                 current_state += execute(
                         deriv_circuit, 
                         backend, 
                             ).result().get_statevector()
         
-            statevectors += current_state
+            statevectors += [current_state]
         
         """get vanilla circuit state"""
         vanilla_circuit = self.circuit.to_qiskit(params=params)
@@ -358,15 +365,15 @@ class Optimizer:
         fb1 = np.array([[0. + 0.j for _ in range(num_params)] for _ in range(num_params)])
                                      
         
-        for i, state1 in enumerate(statevector):
-            for j, state2 in enumerate(statevector[:i+1]):
+        for i, state1 in enumerate(statevectors):
+            for j, state2 in enumerate(statevectors[:i+1]):
          
                 fb1[i,j] = np.inner(np.conj(state1), state2)
                 if j < i:
                     fb1[j,i] = np.conj(fb1[i,j])
             
         """get second fubini term"""    
-        inner_products = [np.inner(np.conj(statevector[i]), vanilla_state) for i in range(num_params)]
+        inner_products = [np.inner(np.conj(statevectors[i]), vanilla_state) for i in range(num_params)]
         
         fb2 = np.outer(np.conj(inner_products), inner_products)
         
@@ -417,10 +424,29 @@ def get_fubini_protocol(n, param_config):
                 
 
     
-def get_derivative_insertion(gate, n):
+def get_derivative_insertion(gate, n, simulation=False):
     target = gate.target
     gate_type = gate.gate_type
-    if gate_type == 'x':
+    
+    """in case of simulation based way to determine fb"""
+    if gate_type == 'x' and simulation:
+        return [Gate('pauli_x', target, n)], ['none_gate']
+    elif gate_type == 'y' and simulation:
+        return [Gate('pauli_y', target, n)], ['none_gate']
+    elif gate_type == 'z' and simulation:
+        return [Gate('pauli_z', target, n)], ['none_gate']
+    elif gate_type == 'xx' and simulation:
+        return [Gate('cx', target, (target+1)%n)], ['none_gate']
+        #return [Gate('cx', target, n), Gate('cx', (target+1)%n, n)], ['none_gate', 'none_gate']
+    elif gate_type == 'yy' and simulation:
+        return [Gate('cy', target, (target+1)%n)], ['none_gate']
+        #return [Gate('cy', target, n), Gate('cy', (target+1)%n, n)], ['none_gate', 'none_gate']
+    elif gate_type == 'zz' and simulation:
+        return [Gate('cz', target, (target+1)%n)], ['none_gate']
+        #return [Gate('cz', target, n), Gate('cz', (target+1)%n, n)], ['none_gate', 'none_gate']
+    
+        """for measurement based approach"""
+    elif gate_type == 'x':
         return [Gate('cx', target, n)], ['none_gate']
     elif gate_type == 'y':
         return [Gate('cy', target, n)], ['none_gate']

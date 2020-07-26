@@ -21,6 +21,7 @@ class Gate:
             circuit.ry(param, self.target)
         elif self.gate_type == 'z':
             circuit.rz(param, self.target)
+            
         elif self.gate_type == 'pauli_x':
             circuit.x(self.target)
         elif self.gate_type == 'pauli_y':
@@ -39,6 +40,7 @@ class Gate:
         elif self.gate_type == 'cz':
             circuit.cz(self.control, self.target)
         elif self.gate_type == 'cy':
+            print(self.control, self.target, param)
             circuit.cy(self.control, self.target)
         elif self.gate_type == 'crx':
             circuit.crx(param, self.control, self.target)
@@ -180,7 +182,16 @@ def format_coord(x, y):
 
     
 def plot_fubini(matrices, iterations, savename=''):
-    
+    hold = [np.array([np.array([0. for _ in range(len(matrices[0][0]))]) for _ in range(len(matrices[0]))]) 
+            for _ in range(len(matrices))]
+    if isinstance(matrices[0][0][0], complex):
+        for i in range(len(matrices)):
+            for j in range(len(matrices[0])):
+                for k in range(len(matrices[0][0])):
+                    hold[i][j][k] = np.real(matrices[i][j][k])
+         
+    print(hold)
+    matrices = hold
     fig, axs = plt.subplots(1, len(matrices), figsize=(20, 2))
     for i in range(len(matrices)):
         axs[i].imshow(matrices[i], interpolation='nearest', vmin=0, vmax=1)
