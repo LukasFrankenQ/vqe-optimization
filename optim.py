@@ -20,6 +20,7 @@ class Optimizer:
             """define initial rotation"""
             self.init_circuit = QuantumCircuit(self.n+1, self.n+1)
             for qubit in range(self.n):
+                self.init_circuit.h(qubit)        # LINE UNDER INVESTIGATION
                 self.init_circuit.rz(np.pi/4., qubit)
                 self.init_circuit.ry(np.pi/4., qubit)
         

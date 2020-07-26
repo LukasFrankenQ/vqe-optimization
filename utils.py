@@ -60,7 +60,7 @@ class Circuit:
         self.backend = Aer.get_backend(backend)
         
     
-    def to_qiskit(self, params=None, gates=None, param_config=None, fb=False):
+    def to_qiskit(self, params=None, gates=None, param_config=None, fb=False, measure=True):
         if fb == False:
             circuit = QuantumCircuit(self.n, self.n)
         elif fb:
@@ -105,9 +105,9 @@ class Circuit:
                 circuit = gate.to_qiskit(circuit, -1)
                 gates = gates[1:]
 
-        if fb == False:
+        if fb == False and measure:
             circuit.measure([i for i in range(self.n)], [i for i in range(self.n)])
-        else:
+        elif fb is True:
             circuit.measure([self.n], [self.n])
         return circuit
         
