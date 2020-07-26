@@ -126,7 +126,8 @@ class Hamiltonian:
     
     
     """Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
-    def multiterm(self, circuit, params, reps=100, J=1.):
+    def multiterm(self, circuit, params, reps=10, J=1.):
+
         if self.hamiltonian_type == "transverse_ising":
             energy = 0.           
             
