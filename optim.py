@@ -83,9 +83,8 @@ class Optimizer:
         
                 deriv[i] = r * (H.eval_dict(result_upper) - H.eval_dict(result_lower)) * self.lr
         
-        """normalize"""
         deriv = list(np.array(deriv) / np.linalg.norm(np.array(deriv)))
-        
+
         return deriv
     
     
