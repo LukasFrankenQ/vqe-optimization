@@ -10,11 +10,6 @@ from physics import Hamiltonian
 from utils import Circuit, plot_fubini, plot_score
 
 
-#######################################################
-##  NON ROTATED HAMILTONIAN WITH NATURAL GRADIENT
-######################################################
-
-
 
 def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot_H=False):
 
@@ -79,55 +74,16 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot
 
     score_data = []
     grad_norm_data = []
-    #parallel and orthogonal norm data
-    old_grad_norm_data = []
-    new_grad_norm_data = []
-    p_norm_data = []
-    o_norm_data = []
-
+    
     increase_reps = 0
 
     for i in range(1,max_iter+1):
 
-
         grad = opt.get_gradient(H, params)
         
-        # get simulated fb metric
-        fb, fb1, fb2 = opt.simulate_fubini_metric(params)
-        # regularize
-        fb = fb + np.identity(len(grad)) * reg_param
-
-
-        #invert and apply
-        fb = np.linalg.inv(fb)
-        old_gradient = np.array(grad)
-        new_gradient = np.matmul(fb, old_gradient)
-
-        #determine length of component parallel and orthogonal gradient
-        old = old_gradient
-        new = new_gradient
-        parallel = old * np.dot(old, new) / np.linalg.norm(old)
-        orthogonal = new - parallel
-
-        old_grad_norm_data.append(np.linalg.norm(old))
-        new_grad_norm_data.append(np.linalg.norm(new))
-        p_norm_data.append(np.linalg.norm(parallel))
-        o_norm_data.append(np.linalg.norm(orthogonal))
-
-
         #update gradient
-        params = list(np.array(params) - lr * new_gradient)
-        #params = list(np.array(params) - lr * np.array(grad))
-        #grad_norm_data.append(np.linalg.norm(np.array(grad)))
-
-        #print('/n ------- current gradient -------------')
-        #print(old_gradient)
-        #print(new_gradient)
-        #print('/n ------- current gradient -------------')
-
-        #curr_circuit = circuit.to_qiskit(params=deepcopy(params))
-        #result = execute(curr_circuit, circuit.backend, shots=grad_reps).result().get_counts()
-        #score = H.eval_dict(result)
+        params = list(np.array(params) - lr * np.array(grad))
+        grad_norm_data.append(np.linalg.norm(np.array(grad)))
 
         score = H.multiterm(circuit, params, reps=10000)
 
@@ -155,11 +111,7 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot
 
     data = [
         np.array(score_data),
-        #np.array(grad_norm_data)
-        np.array(old_grad_norm_data),
-        np.array(new_grad_norm_data),
-        np.array(p_norm_data),
-        np.array(o_norm_data)
+        np.array(grad_norm_data)
     ]
 
     return data, params
@@ -167,21 +119,17 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot
 
 
 
-max_iter = 1000
+max_iter = 500
 iters = 5
 phi = 0.
 n = 4
 p = 4
-rot_H = False
+rot_H = True
 
 names = []
 
 scores = []
-#grad_norm_data = []
-old_grad_norm_data = []
-new_grad_norm_data = []
-p_norm_data = []
-o_norm_data = []
+grad_norm_data = []
 
 for l in range(iters):
 
@@ -190,41 +138,27 @@ for l in range(iters):
     data, params = main(max_iter, p=p, n=n, rot_H=rot_H)
 
     scores += [data[0]]
-    #grad_norm_data += [data[1]]
-    old_grad_norm_data += [data[1]]
-    new_grad_norm_data += [data[2]]
-    p_norm_data += [data[3]]
-    o_norm_data += [data[4]]
+    grad_norm_data += [data[1]]
 
-    np.save('saves/SIM_TFI_no_rot_with_ng_scores', np.array(scores))
-    np.save('saves/SIM_TFI_no_rot_with_ng_old_grad_norm', np.array(old_grad_norm_data))
-    np.save('saves/SIM_TFI_no_rot_with_ng_new_grad_norm', np.array(new_grad_norm_data))
-    np.save('saves/SIM_TFI_no_rot_with_ng_parallel_norm', np.array(p_norm_data))
-    np.save('saves/SIM_TFI_no_rot_with_ng_orthogonal_norm', np.array(o_norm_data))
+    np.save('saves/TFI_rot_'+str(rot_H)+'_ng_False_scores', np.array(scores))
+    np.save('saves/TFI_rot_'+str(rot_H)+'_ng_False_grad_norm', np.array(grad_norm_data))
 
 df_scores = pd.DataFrame.from_dict(dict(zip(names, scores)))
-#df_grad_norm = pd.DataFrame.from_dict(dict(zip(names, grad_norm_data)))
-df_old_grad_norm = pd.DataFrame.from_dict(dict(zip(names, old_grad_norm_data)))
-df_new_grad_norm = pd.DataFrame.from_dict(dict(zip(names, new_grad_norm_data)))
-df_p_norm = pd.DataFrame.from_dict(dict(zip(names, p_norm_data)))
-df_o_norm = pd.DataFrame.from_dict(dict(zip(names, o_norm_data)))
+df_grad_norm = pd.DataFrame.from_dict(dict(zip(names, grad_norm_data)))
 
-f, axs = plt.subplots(5, 1, figsize=(10, 10), sharex=True)
+f, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
 sns.despine(left=True)
 sns.set_style('darkgrid')
 
 sns.lineplot(data=df_scores, ax=axs[0]).set_title('Scores')
-sns.lineplot(data=df_old_grad_norm, ax=axs[1], legend=False).set_title('Old Gradient Norm')
-sns.lineplot(data=df_new_grad_norm, ax=axs[2], legend=False).set_title('New Gradient Norm')
-sns.lineplot(data=df_p_norm, ax=axs[3], legend=False).set_title('New Parallel Norm')
-sns.lineplot(data=df_o_norm, ax=axs[4], legend=False).set_title('New Orthogonal Norm')
+sns.lineplot(data=df_grad_norm, ax=axs[1], legend=False).set_title('Gradient Norm')
 
 #axs[2].set_ylim([0., 5.])
 #axs[3].set_ylim([0., 5.])
 #axs[4].set_ylim([0., 5.])
 
 plt.tight_layout()
-plt.savefig('saves/tfi_t_0_rot_False_4_qubits_4_layers_ng_True_SIMULATED.png', dpi=400)
-
+plt.savefig('saves/tfi_t_0_rot_'+str(rot_H)+'_4_qubits_4_layers_ng_False.png', dpi=400)
+plt.show()
 
 
