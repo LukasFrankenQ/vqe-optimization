@@ -11,12 +11,12 @@ from utils import Circuit, plot_fubini, plot_score
 
 
 #######################################################
-##  NON ROTATED HAMILTONIAN WITH NATURAL GRADIENT
+##  (NON) ROTATED HAMILTONIAN WITH NATURAL GRADIENT
 ######################################################
 
 
 
-def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot_H=False):
+def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot_H=False, random_matrix=False):
 
     hamiltonian_type = "transverse_ising"
     n = n
@@ -27,6 +27,7 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot
     fubini_reps = 100
     #external field
     t = 0.0
+    random_matrix = random_matrix
 
     #Tikhonov regularization parameter
     reg_param = 1e-2
@@ -92,8 +93,15 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot
 
         grad = opt.get_gradient(H, params)
         
-        # get simulated fb metric
-        fb, fb1, fb2 = opt.simulate_fubini_metric(params)
+        if not random_matrix:
+            # get simulated fb metric
+            fb, fb1, fb2 = opt.simulate_fubini_metric(params)
+        elif random_matrix:
+            mu = 0.03
+            var = 0.25
+            fb = np.random.normal(mu, var, (len(params), len(params)))
+        
+        
         # regularize
         fb = fb + np.identity(len(grad)) * reg_param
 
@@ -167,12 +175,14 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, start_in_x=True, rot
 
 
 
-max_iter = 1000
+max_iter = 500
 iters = 5
 phi = 0.
 n = 4
 p = 4
-rot_H = False
+rot_H = True
+random_matrix = True
+
 
 names = []
 
@@ -187,7 +197,7 @@ for l in range(iters):
 
     names += ['run '+str(l+1)]
 
-    data, params = main(max_iter, p=p, n=n, rot_H=rot_H)
+    data, params = main(max_iter, p=p, n=n, rot_H=rot_H, random_matrix=random_matrix)
 
     scores += [data[0]]
     #grad_norm_data += [data[1]]
@@ -196,11 +206,11 @@ for l in range(iters):
     p_norm_data += [data[3]]
     o_norm_data += [data[4]]
 
-    np.save('saves/SIM_TFI_no_rot_with_ng_scores', np.array(scores))
-    np.save('saves/SIM_TFI_no_rot_with_ng_old_grad_norm', np.array(old_grad_norm_data))
-    np.save('saves/SIM_TFI_no_rot_with_ng_new_grad_norm', np.array(new_grad_norm_data))
-    np.save('saves/SIM_TFI_no_rot_with_ng_parallel_norm', np.array(p_norm_data))
-    np.save('saves/SIM_TFI_no_rot_with_ng_orthogonal_norm', np.array(o_norm_data))
+    np.save('saves/SIM_TFI_with_rot_ng_with_random_matrix_scores', np.array(scores))
+    np.save('saves/SIM_TFI_with_rot_ng_with_random_matrix_old_grad_norm', np.array(old_grad_norm_data))
+    np.save('saves/SIM_TFI_with_rot_ng_with_random_matrix_new_grad_norm', np.array(new_grad_norm_data))
+    np.save('saves/SIM_TFI_with_rot_ng_with_random_matrix_parallel_norm', np.array(p_norm_data))
+    np.save('saves/SIM_TFI_with_rot_ng_with_random_matrix_orthogonal_norm', np.array(o_norm_data))
 
 df_scores = pd.DataFrame.from_dict(dict(zip(names, scores)))
 #df_grad_norm = pd.DataFrame.from_dict(dict(zip(names, grad_norm_data)))
@@ -224,7 +234,7 @@ sns.lineplot(data=df_o_norm, ax=axs[4], legend=False).set_title('New Orthogonal 
 #axs[4].set_ylim([0., 5.])
 
 plt.tight_layout()
-plt.savefig('saves/tfi_t_0_rot_False_4_qubits_4_layers_ng_True_SIMULATED.png', dpi=400)
+plt.savefig('saves/tfi_t_0_rot_True_4_qubits_4_layers_ng_with_random_matrix.png', dpi=400)
 
 
 
