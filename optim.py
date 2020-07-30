@@ -7,7 +7,8 @@ from physics import Hamiltonian
 from utils import Circuit, Gate, convert_complex_to_float
 
 class Optimizer:
-    def __init__(self, x=None, circuit=None, n=4, grad_reps=100, fubini_reps=100, max_iter=100, lr=1., rot_circuit=False):
+    def __init__(self, x=None, circuit=None, n=4, grad_reps=100, 
+                       fubini_reps=100, max_iter=100, lr=1., rot_circuit=False, exact_gradient=True):
         self.x0 = x
         self.n = n
         self.circuit = circuit
@@ -16,6 +17,7 @@ class Optimizer:
         self.lr = lr
         self.fubini_reps = fubini_reps
         self.rot_circuit = rot_circuit
+        self.exact_gradient = exact_gradient
         if self.rot_circuit:
             """define initial rotation"""
             self.init_circuit = QuantumCircuit(self.n+1, self.n+1)
@@ -60,8 +62,8 @@ class Optimizer:
                 lower_shift = deepcopy(x)
                 lower_shift[i] -= s
                 
-                upper_val = H.multiterm(self.circuit, upper_shift, reps=reps)
-                lower_val = H.multiterm(self.circuit, lower_shift, reps=reps)
+                upper_val = H.multiterm(self.circuit, upper_shift, reps=reps, exact=self.exact_gradient)
+                lower_val = H.multiterm(self.circuit, lower_shift, reps=reps, exact=self.exact_gradient)
                 
                 deriv[i] = r * (upper_val - lower_val) * self.lr
                 
@@ -76,14 +78,13 @@ class Optimizer:
                 lower_shift = deepcopy(x)
                 lower_shift[i] -= s
             
-            
                 circuit_lower = self.circuit.to_qiskit(params=lower_shift)
                 result_lower = execute(circuit_lower, self.circuit.backend, shots=reps).result().get_counts()
                 self.rep_count += reps
         
                 deriv[i] = r * (H.eval_dict(result_upper) - H.eval_dict(result_lower)) * self.lr
         
-        deriv = list(np.array(deriv) / np.linalg.norm(np.array(deriv)))
+        #deriv = list(np.array(deriv) / np.linalg.norm(np.array(deriv)))
 
         return deriv
     
@@ -292,7 +293,7 @@ class Optimizer:
             """define initial rotation"""
             self.init_circuit = QuantumCircuit(self.n, self.n)
             for qubit in range(self.n):
-                self.init_circuit.h(qubit)        # LINE UNDER INVESTIGATION
+                self.init_circuit.h(qubit)        
                 self.init_circuit.rz(np.pi/4., qubit)
                 self.init_circuit.ry(np.pi/4., qubit)
         """
