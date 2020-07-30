@@ -1,6 +1,6 @@
 import numpy as np
 import random as rd
-from qiskit import execute, QuantumCircuit
+from qiskit import execute, QuantumCircuit, Aer
 from copy import deepcopy
 
 
@@ -9,13 +9,22 @@ class Hamiltonian:
                  n, 
                  hamiltonian_type='sk', 
                  phi=None, 
-                 t=1., 
+                 t=1.,
+		 exact=True, 
                  rotate=False, 
                  init_circuit=None, 
                  append_circuit=None):
         self.n = n
         self.t = t
+        self.J = 1.
+        self.exact = exact
         self.hamiltonian_type = hamiltonian_type
+        if exact:
+            self.backend = Aer.get_backend('statevector_simulator')
+            if hamiltonian_type == 'transverse_ising':
+                self.val_vector_zz, self.val_vector_x = self.get_val_vectors()
+        else:
+            self.backend = Aer.get_backend('qasm_simulator')
         self.matrix = self.get_matrix()
         self.max_value, self.min_value = self.get_boundaries()
         self.phi = phi
@@ -58,7 +67,35 @@ class Hamiltonian:
                 h += matrix
                  
         return h
+
     
+    def get_val_vectors(self):
+        """get binary vectors"""
+        binaries = []
+        for i in range(2**self.n):
+            a = format(i, 'b')
+            b = self.n - np.log2(i+1)
+            binary = int(b)*'0' + a 
+            if len(binary) == self.n+1:
+                binary = self.n * '0' 
+
+            # order reversed due to the way qiskit orders qubits
+            binary = [float(binary[j]) for j in range(self.n)][::-1]
+            binaries.append(np.array(binary))
+
+        """compute value of configurations"""
+        val_vector_zz = []
+        val_vector_x = []
+        for config in binaries:
+            config = 2. * config - 1.
+            shift = np.array(list(config[1:]) + list([config[0]]))
+             
+            val_vector_zz.append(np.dot(config, shift) * (-self.J))
+            val_vector_x.append(-self.t * np.dot(np.ones(self.n), config))
+        
+        return np.array(val_vector_zz), np.array(val_vector_x)
+
+
 
     def get_boundaries(self):
         if self.hamiltonian_type == 'sk':
@@ -126,44 +163,50 @@ class Hamiltonian:
     
     
     """Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
-    def multiterm(self, circuit, params, reps=10, J=1.):
+    def multiterm(self, circuit, params, reps=10, J=1., exact=True):
 
         if self.hamiltonian_type == "transverse_ising":
             energy = 0.           
             
             """compute configuration score on first term"""
-            if self.append_circuit is not None:
-                curr_circuit = circuit.to_qiskit(params=deepcopy(params), measure=False)
-            else:
-                curr_circuit = circuit.to_qiskit(params=deepcopy(params))
-                
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params), measure=False)
+
             if self.init_circuit is not None:
                 curr_circuit = self.init_circuit + curr_circuit
             
-            if self.append_circuit is not None:
-                result = execute(curr_circuit+self.append_circuit, circuit.backend, shots=reps).result().get_counts()
+            if not exact:
+
+                result = execute(curr_circuit+self.append_circuit, self.backend, shots=reps).result().get_counts()
+                self.rep_counter += reps
+
+                for meas, count in result.items():
+                    meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                    shift = np.array(list(meas)[1:] + [list(meas)[0]])
+                    energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
             else:
-                result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
+                 state = execute(curr_circuit+self.append_circuit, self.backend).result().get_statevector()
+                 distribution = np.conj(np.array(state)) * np.array(state)
+                 hold = np.array([np.real(entry) for entry in distribution])
+                 energy += np.inner(self.val_vector_zz, hold)
 
-
-            for meas, count in result.items():
-                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                shift = np.array(list(meas)[1:] + [list(meas)[0]])
-                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
-            
             """compute configuration score on second term"""
             for i in range(self.n):
                 curr_circuit.h(i)
-      
-            if self.append_circuit is not None:
-                result = execute(curr_circuit+self.append_circuit, circuit.backend, shots=reps).result().get_counts()
+
+            if not exact:
+                result = execute(curr_circuit+self.append_circuit, self.backend, shots=reps).result().get_counts()
+                self.rep_counter += reps
+                for meas, count in result.items():
+                    meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                    energy += np.dot(np.ones(self.n), meas) * (-self.t) * float(count) / float(reps)
+
             else:
-                result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
-            
-            for meas, count in result.items():
-                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                energy += np.dot(np.ones(self.n), meas) * (-self.t) * float(count) / float(reps)
-                
+                state = execute(curr_circuit+self.append_circuit, self.backend).result().get_statevector()
+                distribution = np.conj(np.array(state)) * np.array(state)
+                hold = np.array([np.real(entry) for entry in distribution])
+
+                energy += np.dot(self.val_vector_x, hold)
+
                 
         elif self.hamiltonian_type == 'rot_single_qubit_z':
             energy = 0.
