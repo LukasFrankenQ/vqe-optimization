@@ -56,7 +56,7 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
         if not exact:
             append_circuit.measure([i for i in range(n)], [i for i in range(n)])
             
-
+    circuit.add_layer('h', 'none')
     for _ in range(p):
         circuit.add_layer('zz', 'coll')
         circuit.add_layer('x', 'ind')
@@ -86,16 +86,11 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
 
     for i in range(1,max_iter+1):
 
-        t0 = time.process_time()
         grad = opt.get_gradient(H, params)
-        print('gradient time: ', time.process_time()-t0)    
     
-
         if not random_matrix:
-            t0 = time.process_time()
             # get simulated fb metric
             fb, fb1, fb2 = opt.simulate_fubini_metric(params)
-            print('fubini time: ', time.process_time() - t0)
         elif random_matrix:
             mu = 0.03
             var = 0.25
@@ -171,7 +166,6 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
     ]
 
     return data, params
-
 
 
 
