@@ -14,9 +14,9 @@ from utils import Circuit, plot_fubini, plot_score
 
 def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_matrix=False, exact=True):
 
-    hamiltonian_type = "transverse_ising"
+    hamiltonian_type = "spin_chain"
     n = n
-    lr = 0.1
+    lr = 0.01
     exact = exact
     max_iter = max_iter
     grad_reps = 10000
@@ -169,13 +169,12 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
 
 
 
-max_iter = 200
+max_iter = 400
 iters = 5
 phi = 0.
 n = 8
 p = 6
-rot_H = True
-random_matrix = False
+rot_H = False
 exact_gradient = True
 
 names = []
@@ -190,6 +189,7 @@ o_norm_data = []
 for l in range(iters):
 
     print('---------------- experiment ------------------')
+    print("model: Spin Chain")
     print("iter: {}/{}".format(l+1, iters))
     print("natural gradient")
     print("rot_H: ", rot_H)
@@ -199,7 +199,7 @@ for l in range(iters):
 
     names += ['run '+str(l+1)]
 
-    data, params = main(max_iter, p=p, n=n, rot_H=rot_H, random_matrix=random_matrix, exact=exact_gradient)
+    data, params = main(max_iter, p=p, n=n, rot_H=rot_H, exact=exact_gradient)
 
     scores += [data[0]]
     #grad_norm_data += [data[1]]
@@ -208,11 +208,11 @@ for l in range(iters):
     p_norm_data += [data[3]]
     o_norm_data += [data[4]]
 
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_scores', np.array(scores))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_old_grad_norm', np.array(old_grad_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_new_grad_norm', np.array(new_grad_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_parallel_norm', np.array(p_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_orthogonal_norm', np.array(o_norm_data))
+    np.save('saves/SIM_SC_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_scores', np.array(scores))
+    np.save('saves/SIM_SC_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_old_grad_norm', np.array(old_grad_norm_data))
+    np.save('saves/SIM_SC_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_new_grad_norm', np.array(new_grad_norm_data))
+    np.save('saves/SIM_SC_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_parallel_norm', np.array(p_norm_data))
+    np.save('saves/SIM_SC_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_orthogonal_norm', np.array(o_norm_data))
 
 df_scores = pd.DataFrame.from_dict(dict(zip(names, scores)))
 #df_grad_norm = pd.DataFrame.from_dict(dict(zip(names, grad_norm_data)))
@@ -236,7 +236,7 @@ sns.lineplot(data=df_o_norm, ax=axs[4], legend=False).set_title('New Orthogonal 
 #axs[4].set_ylim([0., 5.])
 
 plt.tight_layout()
-plt.savefig('saves/tfi_t_0_rot_'+str(rot_H)+'_'+str(n)+'_qubits_'+str(p)+'_layers_ng_exact_'+str(exact_gradient)+'.png', dpi=400)
+plt.savefig('saves/SIM_SC_rot_'+str(rot_H)+'_'+str(n)+'_qubits_'+str(p)+'_layers_ng_exact_'+str(exact_gradient)+'.png', dpi=400)
 
 
 

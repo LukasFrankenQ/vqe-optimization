@@ -21,8 +21,9 @@ class Hamiltonian:
         self.hamiltonian_type = hamiltonian_type
         if exact:
             self.backend = Aer.get_backend('statevector_simulator')
-            if hamiltonian_type == 'transverse_ising':
+            if hamiltonian_type == 'transverse_ising' or hamiltonian_type == 'spin_chain':
                 self.val_vector_zz, self.val_vector_x = self.get_val_vectors()
+
         else:
             self.backend = Aer.get_backend('qasm_simulator')
         self.matrix = self.get_matrix()
@@ -94,7 +95,6 @@ class Hamiltonian:
             val_vector_x.append(-self.t * np.dot(np.ones(self.n), config))
         
         return np.array(val_vector_zz), np.array(val_vector_x)
-
 
 
     def get_boundaries(self):
@@ -232,48 +232,58 @@ class Hamiltonian:
                 
         
         elif self.hamiltonian_type == 'spin_chain':
-            energy = 0.
             
-            """compute configuration score on z-axis correlation term"""
-            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
-            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
-
-            for meas, count in result.items():
-                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                shift = np.array(list(meas)[1:] + [list(meas)[0]])
-                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
-                
-            """compute configuration score on x-axis correlation term"""
-            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
-            for i in range(self.n):
-                curr_circuit.h(i)
-            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
-
-            for meas, count in result.items():
-                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                shift = np.array(list(meas)[1:] + [list(meas)[0]])
-                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
-                
-            """compute configuration score on y-axis correlation term"""
-            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
-            for i in range(self.n):
-                curr_circuit.rz(np.pi, i)
-                curr_circuit.rx(np.pi/2, i)
-            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
-
-            for meas, count in result.items():
-                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                shift = np.array(list(meas)[1:] + [list(meas)[0]])
-                energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
+            energy = 0.           
             
-            """compute configuration score on field term"""
-            circuit = deepcopy(circuit)
-            circuit.add_layer('h', 'none')
-            curr_circuit = circuit.to_qiskit(params=deepcopy(params))
-            result = execute(curr_circuit, circuit.backend, shots=reps).result().get_counts()
-            for meas, count in result.items():
-                meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                energy += np.dot(np.ones(self.n), meas) * (-t) * float(count) / float(reps)
+            """compute configuration score on zz term"""
+            curr_circuit = circuit.to_qiskit(params=deepcopy(params), measure=False)
+
+            if self.init_circuit is not None:
+                curr_circuit = self.init_circuit + curr_circuit
+            
+            state = execute(curr_circuit+self.append_circuit, self.backend).result().get_statevector()
+            distribution = np.conj(np.array(state)) * np.array(state)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.inner(self.val_vector_zz, hold)
+
+            """compute configuration score on xx term"""
+            to_basis = QuantumCircuit(self.n, self.n)
+            for qubit in range(self.n):
+                 to_basis.h(qubit)
+
+            state = execute(curr_circuit+self.append_circuit+to_basis, self.backend).result().get_statevector()
+            distribution = np.conj(np.array(state)) * np.array(state)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.inner(self.val_vector_zz, hold)
+
+
+            """compute configuration score on yy term"""
+            to_basis = QuantumCircuit(self.n, self.n)
+            for qubit in range(self.n):
+                to_basis.rz(np.pi, qubit)
+                to_basis.rx(np.pi/2., qubit)
+
+            state = execute(curr_circuit+self.append_circuit+to_basis, self.backend).result().get_statevector()
+            distribution = np.conj(np.array(state)) * np.array(state)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.inner(self.val_vector_zz, hold)
+
+            
+            if not self.t == 0.:
+                """compute configuration score transverse field term"""
+                to_basis = QuantumCircuit(self.n, self.n)
+                for i in range(self.n):
+                    to_basis.h(i)
+
+                else:
+                    state = execute(curr_circuit+self.append_circuit+to_basis, self.backend).result().get_statevector()
+                    distribution = np.conj(np.array(state)) * np.array(state)
+                    hold = np.array([np.real(entry) for entry in distribution])
+
+                    energy += np.dot(self.val_vector_x, hold)
+            
+            """spin chain energy at the moment not normalized"""
+            return -(energy + 2 * float(self.n))
         
         return (self.max_value - energy) / (self.max_value - self.min_value)
             
