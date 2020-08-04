@@ -22,7 +22,7 @@ class Optimizer:
             """define initial rotation"""
             self.init_circuit = QuantumCircuit(self.n+1, self.n+1)
             for qubit in range(self.n):
-                self.init_circuit.h(qubit)        # LINE UNDER INVESTIGATION
+                self.init_circuit.h(qubit)
                 self.init_circuit.rz(np.pi/4., qubit)
                 self.init_circuit.ry(np.pi/4., qubit)
         
@@ -282,10 +282,6 @@ class Optimizer:
         return second_fubini_term
     
     
-    
-    
-################################################################################
-
 
     def simulate_fubini_metric(self, params, draw=False):
         
@@ -297,7 +293,8 @@ class Optimizer:
                 self.init_circuit.rz(np.pi/4., qubit)
                 self.init_circuit.ry(np.pi/4., qubit)
         """
-        Simulate metric
+        Simulate metric exactly. The method computes the derivative states and
+        and determines the metric as the matrix of inner products 
         
         Input:
         list of current parameter configuration 'params'

@@ -12,11 +12,11 @@ from utils import Circuit, plot_fubini, plot_score
 
 
 
-def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_matrix=False, exact=True):
+def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=True):
 
     hamiltonian_type = "transverse_ising"
     n = n
-    lr = 0.1
+    lr = 0.01
     exact = exact
     max_iter = max_iter
     grad_reps = 10000
@@ -24,7 +24,6 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
     fubini_reps = 100
     #external field
     t = 0.0
-    random_matrix = random_matrix
 
     #Tikhonov regularization parameter
     reg_param = 1e-2
@@ -33,7 +32,6 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
 
     #QAOA layers, i.e. Trotter-Suzuki steps  
     p = p
-    
 
     if rot_H:
         start_in_x = False
@@ -71,8 +69,9 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
     #available: sk, single_qubit_z, rot_single_qubit_z, transverse_ising, spin_chain
     H = Hamiltonian(n, hamiltonian_type=hamiltonian_type, t=t, 
                     init_circuit=init_circuit,
-                    append_circuit=append_circuit)
-    opt = Optimizer(n=n, circuit=circuit, fubini_reps=fubini_reps, grad_reps=grad_reps, rot_circuit=rot_circuit)
+                    append_circuit=append_circuit, exact=exact)
+    opt = Optimizer(n=n, circuit=circuit, fubini_reps=fubini_reps, grad_reps=grad_reps, rot_circuit=rot_circuit,
+                                          exact_gradient=exact)
 
     score_data = []
     grad_norm_data = []
@@ -88,18 +87,11 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
 
         grad = opt.get_gradient(H, params)
     
-        if not random_matrix:
-            # get simulated fb metric
-            fb, fb1, fb2 = opt.simulate_fubini_metric(params)
-        elif random_matrix:
-            mu = 0.03
-            var = 0.25
-            fb = np.random.normal(mu, var, (len(params), len(params)))
-        
+        # get simulated fb metric
+        fb, fb1, fb2 = opt.simulate_fubini_metric(params)
         
         # regularize
         fb = fb + np.identity(len(grad)) * reg_param
-
 
         #invert and apply
         fb = np.linalg.inv(fb)
@@ -135,7 +127,7 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
         score = H.multiterm(circuit, params, reps=10000, exact=exact)
 
         if (i-1)%1 == 0:
-            print('Iteration {}, Score: {}'.format(i, score))
+            print('Iteration {}/{}, Score: {}'.format(i, max_iter, score))
 
         score_data.append(score)
 
@@ -172,11 +164,10 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, random_
 max_iter = 200
 iters = 5
 phi = 0.
-n = 8
-p = 6
-rot_H = True
-random_matrix = False
-exact_gradient = True
+n = 4
+p = 4
+rot_H = False
+exact_gradient = False
 
 names = []
 
@@ -199,7 +190,7 @@ for l in range(iters):
 
     names += ['run '+str(l+1)]
 
-    data, params = main(max_iter, p=p, n=n, rot_H=rot_H, random_matrix=random_matrix, exact=exact_gradient)
+    data, params = main(max_iter, p=p, n=n, rot_H=rot_H, exact=exact_gradient)
 
     scores += [data[0]]
     #grad_norm_data += [data[1]]
@@ -208,11 +199,11 @@ for l in range(iters):
     p_norm_data += [data[3]]
     o_norm_data += [data[4]]
 
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_scores', np.array(scores))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_old_grad_norm', np.array(old_grad_norm_data))
+    np.save('saves/SIM_TFI_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_scores', np.array(scores))
+    np.save('saves/SIM_TFI_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_old_grad_norm', np.array(old_grad_norm_data))
     np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_new_grad_norm', np.array(new_grad_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_parallel_norm', np.array(p_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_orthogonal_norm', np.array(o_norm_data))
+    np.save('saves/SIM_TFI_rot_'+str(n)+'_qubits_'+str(p)+'_layers_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_parallel_norm', np.array(p_norm_data))
+    np.save('saves/SIM_TFI_rot_'+str(n)+'_qubits_'+str(p)+'_layers_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_orthogonal_norm', np.array(o_norm_data))
 
 df_scores = pd.DataFrame.from_dict(dict(zip(names, scores)))
 #df_grad_norm = pd.DataFrame.from_dict(dict(zip(names, grad_norm_data)))

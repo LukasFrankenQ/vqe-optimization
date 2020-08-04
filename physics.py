@@ -166,6 +166,7 @@ class Hamiltonian:
     def multiterm(self, circuit, params, reps=10, J=1., exact=True):
 
         if self.hamiltonian_type == "transverse_ising":
+
             energy = 0.           
             
             """compute configuration score on first term"""
@@ -177,12 +178,12 @@ class Hamiltonian:
             if not exact:
 
                 result = execute(curr_circuit+self.append_circuit, self.backend, shots=reps).result().get_counts()
-                self.rep_counter += reps
 
                 for meas, count in result.items():
                     meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
                     shift = np.array(list(meas)[1:] + [list(meas)[0]])
                     energy += np.dot(meas, shift) * (-J) * float(count) / float(reps)
+
             else:
                  state = execute(curr_circuit+self.append_circuit, self.backend).result().get_statevector()
                  distribution = np.conj(np.array(state)) * np.array(state)
@@ -190,22 +191,22 @@ class Hamiltonian:
                  energy += np.inner(self.val_vector_zz, hold)
 
             """compute configuration score on second term"""
-            for i in range(self.n):
-                curr_circuit.h(i)
+            if not self.t == 0.:
+                for i in range(self.n):
+                    curr_circuit.h(i)
 
-            if not exact:
-                result = execute(curr_circuit+self.append_circuit, self.backend, shots=reps).result().get_counts()
-                self.rep_counter += reps
-                for meas, count in result.items():
-                    meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
-                    energy += np.dot(np.ones(self.n), meas) * (-self.t) * float(count) / float(reps)
+                if not exact:
+                    result = execute(curr_circuit+self.append_circuit, self.backend, shots=reps).result().get_counts()
+                    for meas, count in result.items():
+                        meas = 2*np.array([float(meas[i]) for i in range(len(meas))]) - 1.
+                        energy += np.dot(np.ones(self.n), meas) * (-self.t) * float(count) / float(reps)
 
-            else:
-                state = execute(curr_circuit+self.append_circuit, self.backend).result().get_statevector()
-                distribution = np.conj(np.array(state)) * np.array(state)
-                hold = np.array([np.real(entry) for entry in distribution])
+                else:
+                    state = execute(curr_circuit+self.append_circuit, self.backend).result().get_statevector()
+                    distribution = np.conj(np.array(state)) * np.array(state)
+                    hold = np.array([np.real(entry) for entry in distribution])
 
-                energy += np.dot(self.val_vector_x, hold)
+                    energy += np.dot(self.val_vector_x, hold)
 
                 
         elif self.hamiltonian_type == 'rot_single_qubit_z':
