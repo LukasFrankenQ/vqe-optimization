@@ -12,7 +12,7 @@ from utils import Circuit, plot_fubini, plot_score
 
 
 
-def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=True):
+def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=True, reg_param=1e-2):
 
     hamiltonian_type = "transverse_ising"
     n = n
@@ -26,7 +26,7 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=T
     t = 0.0
 
     #Tikhonov regularization parameter
-    reg_param = 1e-2
+    reg_param = reg_param
 
     circuit = Circuit(n)
 
@@ -49,20 +49,24 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=T
 
     else:
         rot_circuit = False
-        init_circuit = None
+        init_circuit = QuantumCircuit(n, n)                # added this right here
+        for qubit in range(n):
+            init_circuit.h(qubit)
+
         append_circuit = QuantumCircuit(n, n)
         if not exact:
             append_circuit.measure([i for i in range(n)], [i for i in range(n)])
             
-    circuit.add_layer('h', 'none')
+#    circuit.add_layer('h', 'none')
     for _ in range(p):
         circuit.add_layer('zz', 'coll')
         circuit.add_layer('x', 'ind')
         circuit.add_layer('y', 'ind')
         circuit.add_layer('z', 'ind')
 
-    init_noise_var = 0.1
+    init_noise_var = 0.05
     params = [0. + np.random.normal(scale=init_noise_var) for _ in range(len(circuit.params))]
+    #params = [0. for _ in range(len(circuit.params))]
     circuit.params = params
     #print(circuit.to_qiskit())
 
@@ -70,6 +74,7 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=T
     H = Hamiltonian(n, hamiltonian_type=hamiltonian_type, t=t, 
                     init_circuit=init_circuit,
                     append_circuit=append_circuit, exact=exact)
+    
     opt = Optimizer(n=n, circuit=circuit, fubini_reps=fubini_reps, grad_reps=grad_reps, rot_circuit=rot_circuit,
                                           exact_gradient=exact)
 
@@ -82,6 +87,9 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=T
     o_norm_data = []
 
     increase_reps = 0
+
+    print('working with param: ', reg_param)
+
 
     for i in range(1,max_iter+1):
 
@@ -162,72 +170,78 @@ def main(max_iter, phi=0., hamiltonian_type=None, p=5, n=4, rot_H=False, exact=T
 
 
 max_iter = 200
-iters = 5
+runs = 4
 phi = 0.
+ns = [4, 6, 6, 8, 10, 10]
+ps = [4, 4, 6, 6, 8, 10]
 n = 4
 p = 4
 rot_H = False
-exact_gradient = False
+exact_gradient = True
 
-names = []
 
-scores = []
-#grad_norm_data = []
-old_grad_norm_data = []
-new_grad_norm_data = []
-p_norm_data = []
-o_norm_data = []
 
-for l in range(iters):
+#reg_param = 0.001
 
-    print('---------------- experiment ------------------')
-    print("iter: {}/{}".format(l+1, iters))
-    print("natural gradient")
-    print("rot_H: ", rot_H)
-    print("num qubits: {}, num layers: {}".format(n, p)) 
-    print("exact gradient: {}".format(exact_gradient))
-    print("----------------------------------------------")
+reg_params = []
+max_param = 10
+baseline = 0.0001
+for i in range(max_param):
+    reg_params.append(baseline + i*0.0001)
 
-    names += ['run '+str(l+1)]
 
-    data, params = main(max_iter, p=p, n=n, rot_H=rot_H, exact=exact_gradient)
+#print("investigating following qubits and layer numbers:")
+#print(ns)
+#print(ps)
 
-    scores += [data[0]]
-    #grad_norm_data += [data[1]]
-    old_grad_norm_data += [data[1]]
-    new_grad_norm_data += [data[2]]
-    p_norm_data += [data[3]]
-    o_norm_data += [data[4]]
 
-    np.save('saves/SIM_TFI_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_scores', np.array(scores))
-    np.save('saves/SIM_TFI_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_old_grad_norm', np.array(old_grad_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_new_grad_norm', np.array(new_grad_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(n)+'_qubits_'+str(p)+'_layers_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_parallel_norm', np.array(p_norm_data))
-    np.save('saves/SIM_TFI_rot_'+str(n)+'_qubits_'+str(p)+'_layers_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_orthogonal_norm', np.array(o_norm_data))
+#for n, p in zip(ns, ps):
+for reg_param in reg_params:
 
-df_scores = pd.DataFrame.from_dict(dict(zip(names, scores)))
-#df_grad_norm = pd.DataFrame.from_dict(dict(zip(names, grad_norm_data)))
-df_old_grad_norm = pd.DataFrame.from_dict(dict(zip(names, old_grad_norm_data)))
-df_new_grad_norm = pd.DataFrame.from_dict(dict(zip(names, new_grad_norm_data)))
-df_p_norm = pd.DataFrame.from_dict(dict(zip(names, p_norm_data)))
-df_o_norm = pd.DataFrame.from_dict(dict(zip(names, o_norm_data)))
+    names = []
 
-f, axs = plt.subplots(5, 1, figsize=(10, 10), sharex=True)
-sns.despine(left=True)
-sns.set_style('darkgrid')
+    scores = []
+    old_grad_norm_data = []
+    new_grad_norm_data = []
+    
+    for l in range(runs):
 
-sns.lineplot(data=df_scores, ax=axs[0]).set_title('Scores')
-sns.lineplot(data=df_old_grad_norm, ax=axs[1], legend=False).set_title('Old Gradient Norm')
-sns.lineplot(data=df_new_grad_norm, ax=axs[2], legend=False).set_title('New Gradient Norm')
-sns.lineplot(data=df_p_norm, ax=axs[3], legend=False).set_title('New Parallel Norm')
-sns.lineplot(data=df_o_norm, ax=axs[4], legend=False).set_title('New Orthogonal Norm')
+        print('---------------- experiment ------------------')
+        print("iter: {}/{}".format(l+1, runs))
+        print("natural gradient - reg param analysis")
+        print("rot_H: ", rot_H)
+        print("regularization parameter: ", reg_param)
+        print("num qubits: {}, num layers: {}".format(n, p)) 
+        print("exact gradient: {}".format(exact_gradient))
+        print("----------------------------------------------")
 
-#axs[2].set_ylim([0., 5.])
-#axs[3].set_ylim([0., 5.])
-#axs[4].set_ylim([0., 5.])
+        names += ['run '+str(l+1)]
 
-plt.tight_layout()
-plt.savefig('saves/tfi_t_0_rot_'+str(rot_H)+'_'+str(n)+'_qubits_'+str(p)+'_layers_ng_exact_'+str(exact_gradient)+'.png', dpi=400)
+        data, params = main(max_iter, p=p, n=n, rot_H=rot_H, exact=exact_gradient, reg_param=reg_param)
+
+        scores += [data[0]]
+        #grad_norm_data += [data[1]]
+        old_grad_norm_data += [data[1]]
+        new_grad_norm_data += [data[2]]
+
+        np.save('saves/dim_analysis/SIM_TFI_reg_param_'+str(reg_param)+'_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_scores', np.array(scores))
+        np.save('saves/dim_analysis/SIM_TFI_reg_param_'+str(reg_param)+'_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_old_grad_norm', np.array(old_grad_norm_data))
+        np.save('saves/dim_analysis/SIM_TFI_reg_param_'+str(reg_param)+'_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng_new_grad_norm', np.array(new_grad_norm_data))
+
+    df_scores = pd.DataFrame.from_dict(dict(zip(names, scores)))
+    df_old_grad_norm = pd.DataFrame.from_dict(dict(zip(names, old_grad_norm_data)))
+    df_new_grad_norm = pd.DataFrame.from_dict(dict(zip(names, new_grad_norm_data)))
+
+    f, axs = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+    sns.despine(left=True)
+    sns.set_style('darkgrid')
+
+    sns.lineplot(data=df_scores, ax=axs[0]).set_title('Scores')
+    sns.lineplot(data=df_old_grad_norm, ax=axs[1], legend=False).set_title('Old Gradient Norm')
+    sns.lineplot(data=df_new_grad_norm, ax=axs[2], legend=False).set_title('New Gradient Norm')
+
+    plt.tight_layout()
+    plt.savefig('saves/dim_analysis/SIM_TFI_reg_param_'+str(reg_param)+'_'+str(n)+'_qubits_'+str(p)+'_layers_rot_'+str(rot_H)+'_exact_'+str(exact_gradient)+'_ng.png', dpi=400)
 
 
 

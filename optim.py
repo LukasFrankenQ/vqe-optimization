@@ -18,11 +18,14 @@ class Optimizer:
         self.fubini_reps = fubini_reps
         self.rot_circuit = rot_circuit
         self.exact_gradient = exact_gradient
+        
+        """define initial rotation"""
+        self.init_circuit = QuantumCircuit(self.n+1, self.n+1)    
+        for qubit in range(self.n):
+            self.init_circuit.h(qubit)
+
         if self.rot_circuit:
-            """define initial rotation"""
-            self.init_circuit = QuantumCircuit(self.n+1, self.n+1)
             for qubit in range(self.n):
-                self.init_circuit.h(qubit)
                 self.init_circuit.rz(np.pi/4., qubit)
                 self.init_circuit.ry(np.pi/4., qubit)
         
@@ -170,8 +173,7 @@ class Optimizer:
                         if draw:
                             print(deriv_circuit)
                             
-                        if self.rot_circuit:
-                            deriv_circuit = self.init_circuit + deriv_circuit
+                        deriv_circuit = self.init_circuit + deriv_circuit
 
                         result = execute(
                                 deriv_circuit, 
@@ -256,8 +258,7 @@ class Optimizer:
                                             gates=deriv_gates
                                             )
                 
-                if self.rot_circuit:
-                    deriv_circuit = self.init_circuit + deriv_circuit
+                deriv_circuit = self.init_circuit + deriv_circuit
                 
                 if draw:
                     print(deriv_circuit)
@@ -285,11 +286,12 @@ class Optimizer:
 
     def simulate_fubini_metric(self, params, draw=False):
         
+        """define initial rotation"""
+        self.init_circuit = QuantumCircuit(self.n, self.n)
+        for qubit in range(self.n):
+            self.init_circuit.h(qubit)        
         if self.rot_circuit:
-            """define initial rotation"""
-            self.init_circuit = QuantumCircuit(self.n, self.n)
             for qubit in range(self.n):
-                self.init_circuit.h(qubit)        
                 self.init_circuit.rz(np.pi/4., qubit)
                 self.init_circuit.ry(np.pi/4., qubit)
         """
@@ -342,8 +344,7 @@ class Optimizer:
                                             measure=False
                                             )
                 
-                if self.rot_circuit:
-                    deriv_circuit = self.init_circuit + deriv_circuit
+                deriv_circuit = self.init_circuit + deriv_circuit
                 
                 if draw:
                     print(deriv_circuit)

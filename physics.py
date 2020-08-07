@@ -172,8 +172,7 @@ class Hamiltonian:
             """compute configuration score on first term"""
             curr_circuit = circuit.to_qiskit(params=deepcopy(params), measure=False)
 
-            if self.init_circuit is not None:
-                curr_circuit = self.init_circuit + curr_circuit
+            curr_circuit = self.init_circuit + curr_circuit
             
             if not exact:
 
