@@ -1,5 +1,6 @@
-from qiskit import Aer, QuantumCircuit, execute
+ifrom qiskit import Aer, QuantumCircuit, execute
 import numpy as np
+from copy import deepcopy
 
 import sys
 sys.path.append('../vqe-optimization/')
@@ -32,7 +33,6 @@ def linear_grad(x, H, init, exit, normalize=False)
     unitaries_upper_shift = get_circuit_unitaries(mode='upper_shift', shift=s)
     unitaries_lower_shift = get_circuit_unitaries(mode='lower_shift', shift=s)
     init_state = get_complex_identity(2**self.n, init_state=True)
-
 
     backend = Aer.get_backend('unitary_simulator')
     
@@ -82,8 +82,112 @@ def linear_grad(x, H, init, exit, normalize=False)
 
 
 
-def get_unitaries(params=None, mode=None, shift=None):
-    for param in params
+def get_unitaries(self, params=None, mode=None, shift=None):
+    
+    unitaries = []
+
+    if mode == 'params':
+        params = deepcopy(params)
+    elif mode == 'upper_shift':
+        params = [shift for i in range(len(self.circuit.params)]
+    elif mode == 'lower_shift':
+        params = [-shift for i in range(len(self.circuit.params)]
+
+
+    backend = Aer.get_backend('unitary_simulator')
+    gates = deepcopy(self.circuit.gate_list)
+    
+    for i, conf in enumerate(self.circuit.param_config)):
+        
+        circuit = QuantumCircuit(self.n, self.n)
+
+        if config == 'coll':
+            param = params[0]
+            for qubit in range(self.n):
+                gates = gates[i]
+                circuit = gate.to_qiskit(circuit, param)
+            gates = gates[self.n:]
+            params = params[1:]
+
+        elif config == 'ind_layer':
+            for i in range(self.n):
+                gate = gates[i]
+                param = params[i]
+                circuit = gate.to_qiskit(circuit, param)
+            gates = gates[self.n:]
+            params = params[self.n:]
+
+        else:
+            raise 'please use layerwise architectures with parameters'
+
+        unitary = execute(circuit, backend).result().get_unitary()
+        unitaries.append(unitaries)
+
+    return unitaries
+
+
+
+
+
+
+def get_rotations(n, axis='x'):
+    backend = Aer.get_backend('unitary_simulator')
+    circuit = QuantumCircuit(n, n)
+    if axis == 'x':
+        for qubit in range(n):
+            circuit.h(qubit)
+    
+    elif axis == 'y':
+        for qubit in range(n):
+            circuit.rz(np.pi, qubit)
+            circuit.rx(np.pi/2, qubit)
+
+    '''refers to the 45 degree Hamiltonian rotation''' 
+    elif axis == '45':
+        for qubit in range(n):
+            circuit.rz(np.pi/4., qubit) 
+            circuit.ry(np.pi/4., qubit) 
+
+    unitary = execute(circuit, backend).result().get_unitary()
+    return unitary
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+            
 
 
 
