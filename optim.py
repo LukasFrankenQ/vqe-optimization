@@ -4,9 +4,9 @@ from qiskit import QuantumCircuit
 import numpy as np
 import time
 
-from test_physics import Hamiltonian
-from test_utils import Circuit, Gate, convert_complex_to_float, get_unitaries, get_init_state, adj, rc, get_rotations
-from test_utils import rcv
+from physics import Hamiltonian
+from utils import Circuit, Gate, convert_complex_to_float, get_unitaries, get_init_state, adj, rc, get_rotations
+from utils import rcv
 
 class Optimizer:
     def __init__(self, x=None, circuit=None, n=4, grad_reps=100, 

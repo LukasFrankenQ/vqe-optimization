@@ -2,6 +2,7 @@ import numpy as np
 import random as rd
 from qiskit import execute, QuantumCircuit, Aer
 from copy import deepcopy
+from utils import get_rotations
 
 
 class Hamiltonian:
@@ -9,16 +10,21 @@ class Hamiltonian:
                  n, 
                  hamiltonian_type='sk', 
                  phi=None, 
-                 t=1.,
+                 t=0.,
+                 J=1.,
 		 exact=True, 
                  rotate=False, 
                  init_circuit=None, 
                  append_circuit=None):
         self.n = n
         self.t = t
-        self.J = 1.
+        self.J = J
         self.exact = exact
         self.hamiltonian_type = hamiltonian_type
+        if hamiltonian_type == 'spin_chain' or hamiltonian_type == 'transverse_ising':
+            self.rot_x_to_z = get_rotations(n, axis='x')
+            self.rot_y_to_z = get_rotations(n, axis='y')
+
         if exact:
             self.backend = Aer.get_backend('statevector_simulator')
             if hamiltonian_type == 'transverse_ising' or hamiltonian_type == 'spin_chain':
@@ -26,7 +32,7 @@ class Hamiltonian:
 
         else:
             self.backend = Aer.get_backend('qasm_simulator')
-        self.matrix = self.get_matrix()
+        #self.matrix = self.get_matrix()
         self.max_value, self.min_value = self.get_boundaries()
         self.phi = phi
         self.rotate = rotate
@@ -81,7 +87,7 @@ class Hamiltonian:
                 binary = self.n * '0' 
 
             # order reversed due to the way qiskit orders qubits
-            binary = [float(binary[j]) for j in range(self.n)][::-1]
+            binary = [float(binary[j]) for j in range(self.n)]#[::-1]
             binaries.append(np.array(binary))
 
         """compute value of configurations"""
@@ -92,8 +98,8 @@ class Hamiltonian:
             shift = np.array(list(config[1:]) + list([config[0]]))
              
             val_vector_zz.append(np.dot(config, shift) * (-self.J))
-            val_vector_x.append(-self.t * np.dot(np.ones(self.n), config))
-        
+            val_vector_x.append(self.t * np.dot(np.ones(self.n), config))
+       
         return np.array(val_vector_zz), np.array(val_vector_x)
 
 
@@ -116,14 +122,17 @@ class Hamiltonian:
 
         elif self.hamiltonian_type == 'transverse_ising':
 
-            if self.n%2==0:
+            if self.n==1:
+                E_gs = -self.t
+            elif self.n%2==0:
                 alphas = [np.pi / self.n*(2*i+1) for i in range(self.n//2)]
                 E_gs = 0.
+                E_gs -= 2*sum([np.sqrt(1+2*np.cos(alphas[i])*self.t+self.t**2) for i in range(self.n//2)])
             else:
                 alphas = [np.pi / self.n*(2*i+2) for i in range(self.n//2)]
                 E_gs = - 1. - self.t 
+                E_gs -= 2*sum([np.sqrt(1+2*np.cos(alphas[i])*self.t+self.t**2) for i in range(self.n//2)])
 
-            E_gs -= 2*sum([np.sqrt(1+2*np.cos(alphas[i])*self.t+self.t**2) for i in range(self.n//2)])
             
             """normalization is commented out"""
             """E_gs /= N"""
@@ -161,6 +170,60 @@ class Hamiltonian:
         avg /= total
         return (self.max_value - avg) / (self.max_value - self.min_value)
     
+
+
+    def eval_state(self, state):
+        """
+        computes energy of a quantum state (only for transverse ising and spin chain model)
+ 
+        in: already computed state: complex numpy array with 2**n dims
+    
+        out: scalar representing state performance
+        """
+        if self.hamiltonian_type == 'transverse_ising':
+
+            energy = 0.           
+            
+            """compute energy on first (zz) term"""
+            distribution = np.conj(np.array(state)) * np.array(state)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.inner(self.val_vector_zz, hold)
+            
+            """compute energy on second (x) term"""
+            state = np.matmul(self.rot_x_to_z, state)
+            distribution = np.conj(np.array(state)) * np.array(state)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.dot(self.val_vector_x, hold)
+
+            return (energy - self.min_value) / (self.max_value - self.min_value)
+
+        elif self.hamiltonian_type == 'spin_chain':
+            
+            energy = 0.
+
+            """compute energy on (zz) term"""
+            distribution = np.conj(np.array(state)) * np.array(state)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.inner(self.val_vector_zz, hold)
+
+            """compute energy on (xx) term"""
+            state_x = np.matmul(self.rot_x_to_z, state)
+            distribution = np.conj(np.array(state_x)) * np.array(state_x)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.dot(self.val_vector_zz, hold)
+ 
+            """compute energy on (x) term"""
+            energy += np.dot(self.val_vector_x, hold)
+            
+            """compute energy on (yy) term"""
+            state_y = np.matmul(self.rot_y_to_z, state)
+            distribution = np.conj(np.array(state_y)) * np.array(state_y)
+            hold = np.array([np.real(entry) for entry in distribution])
+            energy += np.dot(self.val_vector_zz, hold)
+
+            return -energy
+
+
     
     """Evaluating cost for a parameter configuration for a Hamiltonian with multiple terms"""
     def multiterm(self, circuit, params, reps=10, J=1., exact=True):

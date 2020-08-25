@@ -1,9 +1,12 @@
 import qiskit
-from qiskit import Aer
+from qiskit import Aer, execute
 from qiskit import QuantumCircuit
 import random as rd
 import numpy as np
 import matplotlib.pyplot as plt
+from copy import deepcopy
+import time
+
 
 class Gate:
     def __init__(self, gate_type, target, control, param=None):
@@ -49,7 +52,144 @@ class Gate:
         elif self.gate_type == 'crz':
             circuit.crz(param, self.control, self.target)
         return circuit
+
+
+    def to_unitary(self, n, param=None, decimals=False):
+        c, t = self.control, self.target
+        theta = param or self.param
+        if theta is None:
+            theta = 0.
+
+        # one qubit gates
+        if len(self.gate_type) == 1:
+            if self.gate_type == 'x':
+                non_trivial = np.array([[complex(np.cos(theta/2.),0.), complex(0., -np.sin(theta/2.))],
+                                       [complex(0., -np.sin(theta/2.)), complex(np.cos(theta/2.),0.)]])
+            elif self.gate_type == 'y':
+                non_trivial = np.array([[complex(np.cos(theta/2.), 0.), complex(-np.sin(theta/2.), 0.)],
+                                       [complex(np.sin(theta/2.), 0.), complex(np.cos(theta/2.), 0.)]])
+
+            elif self.gate_type == 'z':
+                non_trivial = np.array([[complex(1., 0.), complex(0., 0.)],
+                                       [complex(0., 0.), complex(np.cos(theta), np.sin(theta))]])
+
+            elif self.gate_type == 'h':
+                non_trivial = np.array([[complex(1.,0.), complex(1.,0.)],
+                                        [complex(1.,0.), complex(-1.,0.)]]) / np.sqrt(2.)
+
+            unitary = tensor_product([
+                np.identity(2**t, dtype=complex), non_trivial, np.identity(2**(n-t-1), dtype=complex)
+            ])
+
+        # pauli gates
+        elif self.gate_type == 'pauli_x':
+            non_trivial = np.array([[complex(0., 0.), complex(1., 0.)],[complex(1., 0.), complex(0., 0.)]])
+            
+            unitary = tensor_product([
+                np.identity(2**t, dtype=complex), non_trivial, np.identity(2**(n-t-1), dtype=complex)
+            ])
+
+        elif self.gate_type == 'pauli_y':
+            non_trivial = np.array([[complex(0., 0.), complex(0., -1.)],[complex(0., 1.), complex(0., 0.)]])
+            
+            unitary = tensor_product([
+                np.identity(2**t, dtype=complex), non_trivial, np.identity(2**(n-t-1), dtype=complex)
+            ])
         
+        elif self.gate_type == 'pauli_z':
+            non_trivial = np.array([[complex(1., 0.), complex(0., 0.)],[complex(0., 0.), complex(-1., 0.)]])
+
+            unitary = tensor_product([
+                np.identity(2**t, dtype=complex), non_trivial, np.identity(2**(n-t-1), dtype=complex)
+            ])
+
+        # controlled gates
+        else:
+            # currently only configured for zz
+            if self.gate_type == 'cx':
+                upper_diagonal = 0.
+                lower_diagonal = 0.
+                upper_off_diagonal = 1.
+                lower_off_diagonal = 1.
+
+            elif self.gate_type == 'cz':
+                upper_diagonal = 1.
+                lower_diagonal = -1.
+                upper_off_diagonal = 0.
+                lower_off_diagonal = 0.
+
+
+
+            elif self.gate_type == 'xx':
+                upper_diagonal = complex(np.cos(theta),0.)
+                lower_diagonal = complex(np.cos(theta),0.)
+                upper_off_diagonal = complex(0.,-np.sin(theta))
+                lower_off_diagonal = complex(0.,-np.sin(theta))
+
+            elif self.gate_type == 'yy':
+                upper_diagonal = complex(np.cos(theta),0.)
+                lower_diagonal = complex(np.cos(theta),0.)
+                upper_off_diagonal = complex(-np.sin(theta),0.)
+                lower_off_diagonal = complex(np.sin(theta),0.)
+
+            elif self.gate_type == 'zz':
+                diagonal_entry = complex(np.cos(theta), +np.sin(theta))
+                #lower_diagonal = complex(np.cos(theta), np.sin(theta))
+                upper_off_diagonal = 0.
+                lower_off_diagonal = 0.
+
+            # plug them in (use symmetry of zz gate)
+            upper = max(c, t)
+            lower = min(c, t)
+
+            non_trivial = np.identity(2**(upper-lower+1), dtype=complex)
+            for i in range(2**(upper-lower)):
+                if i%2 == 1:
+                    non_trivial[i, i] = diagonal_entry
+            for i in range(2**(upper-lower), 2**(upper-lower+1)):
+                if i%2 == 0:
+                    non_trivial[i, i] = diagonal_entry
+
+            """
+            if c > t:
+    
+                non_trivial = np.identity(2**(abs(c-t)+1), dtype=complex)
+                for x in range(2**(c-t-1)):
+                    non_trivial[2*x+1,2*x+1] = upper_diagonal
+                    non_trivial[2*x+1, 2*x + 2**(c-t)+1] = upper_off_diagonal
+                for x in range(2**(c-t-1)):
+                    non_trivial[2*x + 2**(c-t) +1 , 2*x + 2**(c-t) + 1] = lower_diagonal
+                    non_trivial[2*x + 2**(c-t) + 1, 2*x + 1] =  lower_off_diagonal
+        
+
+            elif t > c:
+    
+                non_trivial = tensor_product([np.array([
+                    [1.,0.],[0.,0.]],dtype=complex),np.identity(2**(t-c))])
+                                             
+                for x in range(2**(t-c-1)):
+                    index = 2**(abs(t-c)) + 2*x 
+                    non_trivial[index, index] = upper_diagonal
+                    non_trivial[index+1, index+1] = lower_diagonal
+                    non_trivial[index, index+1] = upper_off_diagonal
+                    non_trivial[index+1, index] = lower_off_diagonal
+            """
+
+            trivial_lower = np.identity(2**(min(c,t)))
+            trivial_upper = np.identity(2**(n-max(c,t)-1))
+
+            # plug trivial and non-trivial parts together
+            unitary = tensor_product([trivial_lower, non_trivial, trivial_upper])
+
+
+
+            """rounding the result"""
+            if not decimals == False:
+                np.set_printoptions(formatter={'complex-kind': '{:.2f}'.format})
+
+        return unitary
+
+
                 
 
 class Circuit:
@@ -168,6 +308,174 @@ class Circuit:
         return self.gate_list, self.param_config
 
 
+""" ---------------- LINEAR ALGEBRA TOOLS -------------------"""
+
+
+def get_unitaries(circuit, params=None, mode=None, shift=None, derivs=None):
+    """
+    returns the list of unitary matrices
+    corresponding to the deconstructed circuit
+    
+    input:
+    circuit of type 'Circuit' as defined above
+
+    modes:
+    "params": return unitaries with params as in 'params' argument
+    "upper_shift": return unitaries with params corresponding to 
+                   finite differences shift
+    "lower_shift": same but with lower shift
+    
+    output:
+    list of complex 2**n times 2**n matrices, scheduler
+
+    """    
+
+    unitaries = []
+
+    if mode == 'params':
+        params = deepcopy(params)
+    elif mode == 'shift':
+        params = [shift for i in range(len(circuit.params))]
+
+    #backend = Aer.get_backend('unitary_simulator')
+    gates = deepcopy(circuit.gate_list)
+
+    """get derivative insertions to determine fb"""
+    
+    if mode == 'deriv':
+        
+        for gate in derivs:
+            unitaries.append(gate.to_unitary(circuit.n))
+
+        return unitaries
+
+
+    for i, conf in enumerate(circuit.param_config): 
+        
+        if conf == 'coll':
+            unitary = np.identity(2**circuit.n, dtype=complex)
+            param = params[0]
+            for j in range(circuit.n):
+                gate = gates[j]
+                unitary = np.matmul(gate.to_unitary(circuit.n, param=param), unitary)
+            gates = gates[circuit.n:]
+            params = params[1:]
+
+            unitaries.append(unitary)
+
+        elif conf == 'ind_layer':
+
+            for j in range(circuit.n):
+                
+                gate = gates[j]
+                param = params[j]
+                unitary = gate.to_unitary(circuit.n, param=param)
+                unitaries.append(unitary)
+            
+            gates = gates[circuit.n:]
+            params = params[circuit.n:]
+
+        else:
+            raise 'please use layerwise architectures with parameters'
+
+    return unitaries
+
+
+
+
+def get_rotations(n, axis='x', angle=None):
+    """
+    returns a unitary matrix as complex numpy array
+    corresponding to various circuit rotations:
+    
+    axis 'x' rotates x axis into the computational basis
+    axis 'y' same for y axis
+    axis '45' rotates the circuit between the Bloch-sphere axes
+    """
+
+    backend = Aer.get_backend('unitary_simulator')
+    circuit = QuantumCircuit(n, n)
+    if axis == 'x':
+        for qubit in range(n):
+            circuit.h(qubit)
+
+    elif axis == 'y':
+        for qubit in range(n):
+            circuit.rz(np.pi, qubit)
+            circuit.rx(-np.pi/2, qubit)
+
+    elif axis == '45' or axis == '45_inv':
+        """refers to the 45 degree Hamiltonian rotation"""
+        for qubit in range(n):
+            circuit.rz(np.pi/4., qubit)
+            circuit.rx(np.pi/4., qubit)
+
+    elif axis == 'identity':
+        pass 
+
+
+    elif axis == 'gradual_rot' or axis == 'gradual_rot_inv':
+        for qubit in range(n):
+            circuit.rz(angle, qubit)
+            circuit.rx(angle, qubit)
+
+    unitary = execute(circuit, backend).result().get_unitary()
+    
+    if axis.find('inv') > -1:
+        unitary = adj(unitary)
+
+    return unitary
+
+
+def get_init_state(n, zeros=False):
+
+    if zeros:
+        state = np.array([complex(0., 0.) for _ in range(2**n)])
+        return state
+
+    state = [complex(1., 0.)]
+    state += [complex(0., 0.) for _ in range(2**n - 1)]
+    return np.array(state)    
+
+
+
+def tensor_product(args):
+    hold = 1
+    for tensor in args:
+        hold = np.kron(hold, tensor)
+    return hold
+
+
+"""return adjoint numpy matrix"""
+def adj(matrix):
+    return np.conj(matrix.transpose())
+
+
+def rc(matrix, decimals=2):
+    for i in range(len(matrix)):
+        for j in range(len(matrix)):
+            matrix[i, j] = complex(round(np.real(matrix[i, j]), decimals), round(np.imag(matrix[i, j]), decimals))
+    return matrix
+
+
+def rcv(array, decimals=2):
+    hold = []
+    for a in array:
+        hold.append(complex(round(np.real(a), decimals), round(np.imag(a), decimals)))
+    return hold
+
+
+
+
+
+
+
+
+
+
+
+
+
 """--------------- PLOTTING ---------------------------------"""
 
 
@@ -204,7 +512,7 @@ def plot_fubini(matrices, iterations, savename=''):
         axs[i].format_coord = format_coord
     plt.tight_layout()
     plt.show()
-    fig.savefig('saves/fubini_'+savename+'.png', bbox_inches="tight",  dpi=1000)
+    fig.savefig('fubini_'+savename+'.png', bbox_inches="tight",  dpi=1000)
 
 
 def plot_score(score, savename=''):
