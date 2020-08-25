@@ -2,13 +2,16 @@ from copy import deepcopy
 from qiskit import Aer, execute
 from qiskit import QuantumCircuit
 import numpy as np
+import time
 
-from physics import Hamiltonian
-from utils import Circuit, Gate, convert_complex_to_float
+from test_physics import Hamiltonian
+from test_utils import Circuit, Gate, convert_complex_to_float, get_unitaries, get_init_state, adj, rc, get_rotations
+from test_utils import rcv
 
 class Optimizer:
     def __init__(self, x=None, circuit=None, n=4, grad_reps=100, 
-                       fubini_reps=100, max_iter=100, lr=1., rot_circuit=False, exact_gradient=True):
+                       fubini_reps=100, max_iter=100, lr=1., rot_circuit=False, exact_gradient=True,
+                       init=None, exit=None):
         self.x0 = x
         self.n = n
         self.circuit = circuit
@@ -18,6 +21,8 @@ class Optimizer:
         self.fubini_reps = fubini_reps
         self.rot_circuit = rot_circuit
         self.exact_gradient = exact_gradient
+        self.init = init
+        self.exit = exit
         
         """define initial rotation"""
         self.init_circuit = QuantumCircuit(self.n+1, self.n+1)    
@@ -28,8 +33,108 @@ class Optimizer:
             for qubit in range(self.n):
                 self.init_circuit.rz(np.pi/4., qubit)
                 self.init_circuit.ry(np.pi/4., qubit)
+
+
         
+    """x: params, H: computes cost of state, init: initial manipulations, exit: final manipulations"""
+    def linear_time_grad(self, H, x, normalize=False):
+        
+        r = 1.
+        s = np.pi / (4 * r)
     
+        deriv = [0. for _ in range(len(x))]
+    
+        t0 = time.time()
+        unitaries_circuit = get_unitaries(self.circuit, mode='params', params=x)
+        unitaries_upper_shift = get_unitaries(self.circuit, mode='shift', shift=s)
+        unitaries_lower_shift = get_unitaries(self.circuit, mode='shift', shift=-s)
+        init_state = get_init_state(self.n)
+        #print('getting unitaries: ', time.time()-t0) 
+
+        backend = Aer.get_backend('unitary_simulator')
+   
+        """we will incrementally add to right what we substract from left"""
+        """left and right naming refers to |state> = u_left u_right |init>"""
+        c = self.circuit.to_qiskit(params=x, measure=False)
+        unitary_left = execute(c, backend).result().get_unitary()
+ 
+        unitary_left = np.identity(2**self.n, dtype=complex)
+        for u in unitaries_circuit:
+            unitary_left = np.matmul(u, unitary_left)
+ 
+        #print('qiskit: ', round_complex(np.matmul(adj(unitary_left), unitary_left)))
+        unitary_left = np.matmul(self.exit, unitary_left)
+        #print('after: ', np.matmul(adj(unitary_left), unitary_left))
+        unitary_right = self.init
+        #print("right: ", unitary_right)
+        #print('custom method: ', round_complex(un))
+        #print('is it uniray?')
+        #print(round_complex(np.matmul(adj(un), un)))         
+ 
+        for k in range(len(x)):
+          
+            u = unitaries_circuit[k]
+            u_up = unitaries_upper_shift[k]
+            u_down = unitaries_lower_shift[k]
+
+            #print("u dim: ", u.shape)
+            #print("up dim: ", u_up.shape)
+            #print("down dim: ", u_down.shape)
+
+            """obtain shifted states"""
+            upper_unitary = np.matmul(unitary_left, u_up)
+            lower_unitary = np.matmul(unitary_left, u_down)
+            
+            upper_unitary = np.matmul(upper_unitary, unitary_right)
+            lower_unitary = np.matmul(lower_unitary, unitary_right)
+        
+            upper_state = np.matmul(upper_unitary, init_state)
+            lower_state = np.matmul(lower_unitary, init_state)
+            
+            val_upper = H.eval_state(upper_state)
+            val_lower = H.eval_state(lower_state)
+            deriv[k] = r * (val_upper - val_lower)
+
+            """update unitaries"""
+            unitary_left = np.matmul(unitary_left, adj(u))
+            unitary_right = np.matmul(u, unitary_right)
+
+        if normalize:
+            deriv = list(np.array(deriv) / np.linalg.norm(np.array(deriv)))
+ 
+        return deriv
+
+
+    def eval_params(self, H, x):
+        backend = Aer.get_backend("unitary_simulator")
+        state = get_init_state(self.n)
+        unitaries_circuit = get_unitaries(self.circuit, mode='params', params=x)
+        circuit = np.identity(2**self.n, dtype=complex)
+        for u in unitaries_circuit:
+            circuit = np.matmul(u, circuit)
+        circuit = np.matmul(circuit, self.init)
+        circuit = np.matmul(self.exit, circuit)
+        state = np.matmul(circuit, state)
+        score = H.eval_state(state)
+        return score
+        
+
+    def eval_params_qiskit(self, H, x):
+        backend = Aer.get_backend("unitary_simulator")
+        state = get_init_state(self.n)
+        
+        circuit = self.circuit.to_qiskit(params=x, measure=False)
+        circuit = execute(circuit, backend).result().get_unitary()
+        circuit = np.matmul(circuit, self.init)
+        circuit = np.matmul(self.exit, circuit)
+        
+        state = np.matmul(circuit, state)
+        print(f'qiskit state: {state}')
+        score = H.eval_state(state)
+        return score
+
+
+
     def get_gradient(self, H, x, reps=None):
         """
         Determining vanilla gradient using the Gradient shift rule as in
@@ -393,6 +498,101 @@ class Optimizer:
 
 
 
+    def linear_time_fubini(self, x, blockwise=False):
+        unitaries = get_unitaries(self.circuit, mode='params', params=x)
+ 
+        derivs = []
+        for gate in self.circuit.gate_list:
+            deriv_gate, _ = get_derivative_insertion(gate, self.n, simulation=True, linear=True)
+            derivs += deriv_gate
+        
+        """transform gates to a list of unitaries"""
+        derivs = get_unitaries(self.circuit, mode='deriv', derivs=derivs)
+        
+        init_state = get_init_state(self.n)
+        left = get_rotations(self.n, axis='identity')
+        right = get_rotations(self.n, axis='identity')
+
+        for u in unitaries:
+            left = np.matmul(u, left)
+
+        """include init and exit"""
+        left = np.matmul(self.exit, left)
+        right = np.matmul(right, self.init)
+
+        full_unitary = np.matmul(left, right)
+        vanilla_state = np.matmul(full_unitary, init_state)
+        deriv_states = []
+        
+        for i, conf in enumerate(self.circuit.param_config):
+            
+            if conf == 'coll':
+              
+                deriv_state = get_init_state(self.n, zeros=True)
+                for j in range(self.n):
+                    deriv_unitary = np.matmul(derivs[j], right)
+                    deriv_unitary = np.matmul(left, deriv_unitary)
+                    deriv_state += np.matmul(deriv_unitary, init_state)
+
+                deriv_states.append(deriv_state)
+                derivs = derivs[self.n:]
+                left = np.matmul(left, adj(unitaries[0]))
+                right = np.matmul(unitaries[0], right)
+                unitaries = unitaries[1:]
+
+
+            elif conf == 'ind_layer':
+                 
+                for j in range(self.n):    
+                    deriv_unitary = np.matmul(derivs[0], right)
+                    deriv_unitary = np.matmul(left, deriv_unitary)
+                    deriv_state = np.matmul(deriv_unitary, init_state)
+                    deriv_states.append(deriv_state)
+        
+                    derivs = derivs[1:]
+            
+                    left = np.matmul(left, adj(unitaries[0]))
+                    right = np.matmul(unitaries[0], right)
+                    unitaries = unitaries[1:]
+        
+        
+        num_params = len(x)
+        """get first fubini term"""
+        fb1 = np.array([[0. + 0.j for _ in range(num_params)] for _ in range(num_params)])
+                                     
+        
+        for i, state1 in enumerate(deriv_states):
+            for j, state2 in enumerate(deriv_states[:i+1]):
+         
+                fb1[i,j] = 0.25 * np.inner(np.conj(state1), state2)
+                if j < i:
+                    fb1[j,i] = np.conj(fb1[i,j])
+        
+        """get second fubini term"""    
+        inner_products = [0.25 * np.inner(np.conj(deriv_states[i]), vanilla_state) for i in range(num_params)]
+        
+        fb2 = np.outer(np.conj(inner_products), inner_products)
+        
+        """convert to float"""
+        fb1 = convert_complex_to_float(fb1)
+        fb2 = convert_complex_to_float(fb2)
+
+        """get full fubini-study metric"""
+        fb = fb1 - fb2
+        fb = (fb + np.conj(fb)) / 4.
+
+        if blockwise:
+            for i in range(num_params):
+                for j in range(num_params):
+                    if abs(i-j) > max(i,j)%(1+3*self.n):
+                        fb[i,j] = 0.
+                        fb1[i,j] = 0.
+                        fb2[i,j] = 0.
+        
+        return fb, fb1, fb2
+
+
+
 
 
 
@@ -432,7 +632,7 @@ def get_fubini_protocol(n, param_config):
                 
 
     
-def get_derivative_insertion(gate, n, simulation=False):
+def get_derivative_insertion(gate, n, simulation=False, linear=False):
     target = gate.target
     gate_type = gate.gate_type
     
@@ -449,8 +649,10 @@ def get_derivative_insertion(gate, n, simulation=False):
     elif gate_type == 'yy' and simulation:
         return [Gate('cy', target, (target+1)%n)], ['none_gate']
         #return [Gate('cy', target, n), Gate('cy', (target+1)%n, n)], ['none_gate', 'none_gate']
-    elif gate_type == 'zz' and simulation:
+    elif gate_type == 'zz' and simulation and not linear:
         return [Gate('cz', target, (target+1)%n)], ['none_gate']
+    elif gate_type == 'zz' and simulation and linear:
+        return [Gate('zz', target, (target+1)%n, param=np.pi)], ['none_gate']
         #return [Gate('cz', target, n), Gate('cz', (target+1)%n, n)], ['none_gate', 'none_gate']
     
         """for measurement based approach"""
