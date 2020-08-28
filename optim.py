@@ -574,11 +574,11 @@ class Optimizer:
         
             fb2 = np.outer(np.conj(inner_products), inner_products)
         
-        """
-        simulates measurement based computation of the Fubini-study metric 
-        with sim_reps measurements per scalar product
-        """
-        if self.sim_reps > 0.:
+            """
+            simulates measurement based computation of the Fubini-study metric 
+            with sim_reps measurements per scalar product
+            """
+        elif sim_reps > 0.:
             
             deriv_states = []
             state_summands = []
@@ -590,7 +590,6 @@ class Optimizer:
                     for j in range(self.n):
                         deriv_unitary = np.matmul(derivs[j], right)
                         deriv_unitary = np.matmul(left, deriv_unitary)
-                        deriv_state += np.matmul(deriv_unitary, init_state)
                         state_summands.append(np.matmul(deriv_unitary, init_state))
 
                     deriv_states.append(state_summands)
@@ -616,41 +615,43 @@ class Optimizer:
 
             num_params = len(x)
             """get first fubini term"""
-            fb1 = np.array([[0. + 0.j for _ in range(num_params)] for _ in range(num_params)])
-
+            fb1 = np.array([[0. for _ in range(num_params)] for _ in range(num_params)])
 
             for i, states1 in enumerate(deriv_states):
-                for summand1 in states1:
-                    for j, states2 in enumerate(deriv_states):
-                        if i > j:
-                            fb1[i,j] = fb1[j,i]
-                        else:
-                            entry = 0.
+                for j, states2 in enumerate(deriv_states):
+                    if i > j:
+                        fb1[i,j] = fb1[j,i]
+                    else:
+                        entry = 0.
+                        for summand1 in states1:
                             for summand2 in states2:
-                                """determine probability to measure 0 or 1"""
-                                p = np.real(np.inner(np.conj(summand1), summand2))
-                                result = np.random.normal(loc=p, scale=np.sqrt(p*(1-p)/self.sim_reps))
-                                entry += (result - 0.5) * 2.
-                            fb[i,j] = entry / 4.
+                                """determine probability to measure 0 or 1 and according std"""
+                                inner = round(np.real(np.inner(np.conj(summand1), summand2)), 8)
+                                p = 0.5*(inner + 1.)
+                                std = np.sqrt(2.*p*(1.-p) / sim_reps)
+                                entry += np.random.normal(loc=inner, scale=std)
+                            fb1[i,j] = entry / 4.
                         
             scalar_products = np.zeros(num_params)
             for i, states in enumerate(deriv_states):
                 for summand in states:
-                    p = np.real(np.inner(np.conj(vanilla_state), summand)
-                    result = np.random.normal(loc=p, scale=np.sqrt(p*(1-p)/self.sim_reps))
-                    scalar_products[i] += (result - 0.5) * 2.
-            
-
-            fb2 = np.outer(np.conj(inner_products), inner_products) / 4.
-
+                    inner = round(np.real(np.inner(np.conj(vanilla_state), summand)), 8)
+                    p = 0.5*(inner + 1.)
+                    std = np.sqrt(2.*p*(1.-p) / sim_reps)
+                    result = np.random.normal(loc=inner, scale=std)
+                    
+                    scalar_products[i] += result
+            fb2 = np.outer(np.conj(scalar_products), scalar_products) / 4.
+   
 
         """convert to float"""
-        fb1 = convert_complex_to_float(fb1)
-        fb2 = convert_complex_to_float(fb2)
-
+        #fb1 = convert_complex_to_float(fb1)
+        #if sim_reps == 0:
+        #fb2 = convert_complex_to_float(fb2)
         """get full fubini-study metric"""
+        fb1 = np.real(fb1)
+        fb2 = np.real(fb2)
         fb = fb1 - fb2
-        fb = (fb + np.conj(fb)).
 
         if blockwise:
             for i in range(num_params):
@@ -739,6 +740,3 @@ def get_derivative_insertion(gate, n, simulation=False, linear=False):
         return [Gate('cy', target, n), Gate('cy', (target+1)%n, n)], ['none_gate', 'none_gate']
     elif gate_type == 'zz':
         return [Gate('cz', target, n), Gate('cz', (target+1)%n, n)], ['none_gate', 'none_gate']
-
-    
-        
