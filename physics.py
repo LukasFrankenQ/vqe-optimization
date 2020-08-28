@@ -15,10 +15,12 @@ class Hamiltonian:
 		 exact=True, 
                  rotate=False, 
                  init_circuit=None, 
-                 append_circuit=None):
+                 append_circuit=None,
+                 sim_reps=0):
         self.n = n
         self.t = t
         self.J = J
+        self.sim_reps = sim_reps
         self.exact = exact
         self.hamiltonian_type = hamiltonian_type
         if hamiltonian_type == 'spin_chain' or hamiltonian_type == 'transverse_ising':
@@ -184,15 +186,29 @@ class Hamiltonian:
 
             energy = 0.           
             
-            """compute energy on first (zz) term"""
+            """compute energy on (zz) term"""
             distribution = np.conj(np.array(state)) * np.array(state)
             hold = np.array([np.real(entry) for entry in distribution])
-            energy += np.inner(self.val_vector_zz, hold)
+            """induce artificial noise"""
+            if self.sim_reps > 0:
+                choices = rd.choices([i for i in range(2**self.n)], weights=hold, k=self.sim_reps)
+                hold = np.zeros(2**self.n)
+                for choice in choices:
+                    hold[choice] += 1.
+                hold /= self.sim_reps 
             
-            """compute energy on second (x) term"""
+            energy += np.inner(self.val_vector_zz, hold)
+            """compute energy on (x) term"""
             state = np.matmul(self.rot_x_to_z, state)
             distribution = np.conj(np.array(state)) * np.array(state)
             hold = np.array([np.real(entry) for entry in distribution])
+            """induce artificial noise"""
+            if self.sim_reps > 0:
+                choices = rd.choices([i for i in range(2**self.n)], weights=hold, k=self.sim_reps)
+                hold = np.zeros(2**self.n)
+                for choice in choices:
+                    hold[choice] += 1.
+                hold /= self.sim_reps 
             energy += np.dot(self.val_vector_x, hold)
 
             return (energy - self.min_value) / (self.max_value - self.min_value)
