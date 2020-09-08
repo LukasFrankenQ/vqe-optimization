@@ -45,7 +45,7 @@ rot = False
 blockwise = False
 diagonal_only = False
 fubini = True
-runs = 3
+runs = 10
 reg_param = 1e-2
 lr = 0.1
 
