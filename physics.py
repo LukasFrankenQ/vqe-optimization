@@ -174,7 +174,7 @@ class Hamiltonian:
     
 
 
-    def eval_state(self, state):
+    def eval_state(self, state, gaussian=True):
         """
         computes energy of a quantum state (only for transverse ising and spin chain model)
  
@@ -204,11 +204,18 @@ class Hamiltonian:
             hold = np.array([np.real(entry) for entry in distribution])
             """induce artificial noise"""
             if self.sim_reps > 0:
-                choices = rd.choices([i for i in range(2**self.n)], weights=hold, k=self.sim_reps)
-                hold = np.zeros(2**self.n)
-                for choice in choices:
-                    hold[choice] += 1.
-                hold /= self.sim_reps 
+                if not gaussian:
+                    choices = rd.choices([i for i in range(2**self.n)], weights=hold, k=self.sim_reps)
+                    hold = np.zeros(2**self.n)
+                    for choice in choices:
+                        hold[choice] += 1.
+                    hold /= self.sim_reps 
+                else:
+                    for i, entry in enumerate(hold):
+                        
+                        std = np.sqrt(entry*(1.-entry)/self.sim_reps)
+                        hold[i] += np.random.normal(loc=0.0, scale=std)
+
             energy += np.dot(self.val_vector_x, hold)
 
             return (energy - self.min_value) / (self.max_value - self.min_value)

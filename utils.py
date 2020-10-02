@@ -37,13 +37,12 @@ class Gate:
         elif self.gate_type == 'yy':
             circuit.ryy(param, self.control, self.target)
         elif self.gate_type == 'zz':
-            circuit.rzz(param, self.control, self.target)
+            circuit.rzz(param, self.target, self.control)
         elif self.gate_type == 'cx':
             circuit.cx(self.control, self.target)
         elif self.gate_type == 'cz':
             circuit.cz(self.control, self.target)
         elif self.gate_type == 'cy':
-            print(self.control, self.target, param)
             circuit.cy(self.control, self.target)
         elif self.gate_type == 'crx':
             circuit.crx(param, self.control, self.target)
@@ -119,7 +118,6 @@ class Gate:
                 lower_off_diagonal = 0.
 
 
-
             elif self.gate_type == 'xx':
                 upper_diagonal = complex(np.cos(theta),0.)
                 lower_diagonal = complex(np.cos(theta),0.)
@@ -180,8 +178,6 @@ class Gate:
 
             # plug trivial and non-trivial parts together
             unitary = tensor_product([trivial_lower, non_trivial, trivial_upper])
-
-
 
             """rounding the result"""
             if not decimals == False:
@@ -457,6 +453,12 @@ def rc(matrix, decimals=2):
             matrix[i, j] = complex(round(np.real(matrix[i, j]), decimals), round(np.imag(matrix[i, j]), decimals))
     return matrix
 
+def r(matrix, dec=2):
+    for i in range(len(matrix)):
+        for j in range(len(matrix)):
+            matrix[i,j] = round(matrix[i,j], dec)
+    return matrix
+     
 
 def rcv(array, decimals=2):
     hold = []
