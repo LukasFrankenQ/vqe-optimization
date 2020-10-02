@@ -493,198 +493,6 @@ class Optimizer:
 
 
 
-    def fubini_proxi_check(self, x, blockwise=False, block_size=None):
-        sim_reps = self.sim_reps
-       
-        eigen = self.eigen
-        gens = eigen.generators
-        qubits = eigen.qubits 
-
-        unitaries = get_unitaries(self.circuit, mode='params', params=x)
- 
-        derivs = []
-        for gate in self.circuit.gate_list:
-            deriv_gate, _ = get_derivative_insertion(gate, self.n, simulation=True, linear=True)
-            derivs += deriv_gate
-        
-        """transform gates to a list of unitaries"""
-        derivs = get_unitaries(self.circuit, mode='deriv', derivs=derivs)
-        
-        init_state = get_init_state(self.n)
-        left = get_rotations(self.n, axis='identity')
-        right = get_rotations(self.n, axis='identity')
-
-        for u in unitaries:
-            left = np.matmul(u, left)
-
-        """include init and exit"""
-        left = np.matmul(self.exit, left)
-        right = np.matmul(right, self.init)
-
-        full_unitary = np.matmul(left, right)
-        vanilla_state = np.matmul(full_unitary, init_state)
-        
-        if sim_reps == 0:
-            deriv_states = []
-            proxis = []
-           
-            for i, conf in enumerate(self.circuit.param_config):
-            
-                if conf == 'coll':
-              
-                    deriv_state = get_init_state(self.n, zeros=True)
-                    for j in range(self.n):
-                        deriv_unitary = np.matmul(derivs[j], right)
-                        """check eigenstate here"""
-                        checker_state = np.matmul(deriv_unitary, init_state)
-                        proxis.append(eigen.check_convergence(checker_state, j, 'zz'))
-
-                        deriv_unitary = np.matmul(left, deriv_unitary)
-                        deriv_state += np.matmul(deriv_unitary, init_state)
-
-                    deriv_states.append(deriv_state)
-                    derivs = derivs[self.n:]
-                    left = np.matmul(left, adj(unitaries[0]))
-                    right = np.matmul(unitaries[0], right)
-                    unitaries = unitaries[1:]
-                    gens = gens[1:]
-                    qubits = qubits[1:]
-
-                elif conf == 'ind_layer':
-                 
-                    for j in range(self.n):    
-                        deriv_unitary = np.matmul(derivs[0], right)
-                        """check eigenstate here"""
-                        checker_state = np.matmul(deriv_unitary, init_state)
-                        proxis.append(eigen.check_convergence(checker_state, qubits[0], gens[0]))
-
-                        deriv_unitary = np.matmul(left, deriv_unitary)
-                        deriv_state = np.matmul(deriv_unitary, init_state)
-                        deriv_states.append(deriv_state)
-        
-                        derivs = derivs[1:]
-                        qubits = qubits[1:]
-                        gens = gens[1:]
-            
-                        left = np.matmul(left, adj(unitaries[0]))
-                        right = np.matmul(unitaries[0], right)
-                        unitaries = unitaries[1:]
-        
-            num_params = len(x)
-            """get first fubini term"""
-            fb1 = np.array([[0. + 0.j for _ in range(num_params)] for _ in range(num_params)])
-            
-            """remove global phase"""
-            for i in range(num_params):
-                factor = np.conj(deriv_states[i][0]) / np.abs(deriv_states[i][0])
-                deriv_states[i] = factor * deriv_states[i]
-            factor = np.conj(vanilla_state[0]) / np.abs(vanilla_state[0])
-            vanilla_state = factor * vanilla_state
-
-        
-            for i, state1 in enumerate(deriv_states):
-                for j, state2 in enumerate(deriv_states[:i+1]):
-         
-                    fb1[i,j] = np.inner(np.conj(state1), state2)
-                    if j < i:
-                        fb1[j,i] = np.conj(fb1[i,j])
-        
-            """get second fubini term"""    
-            inner_products = [np.vdot(deriv_states[i], vanilla_state) for i in range(num_params)]
-        
-            fb2 = np.outer(np.conj(inner_products), inner_products)
-        
-            """
-            simulates measurement based computation of the Fubini-study metric 
-            with sim_reps measurements per scalar product
-            """
-        elif sim_reps > 0.:
-            deriv_states = []
-            state_summands = []
-
-            for i, conf in enumerate(self.circuit.param_config):
-            
-                if conf == 'coll':
-              
-                    for j in range(self.n):
-                        deriv_unitary = np.matmul(derivs[j], right)
-                        deriv_unitary = np.matmul(left, deriv_unitary)
-                        state_summands.append(np.matmul(deriv_unitary, init_state))
-
-                    deriv_states.append(state_summands)
-                    derivs = derivs[self.n:]
-                    left = np.matmul(left, adj(unitaries[0]))
-                    right = np.matmul(unitaries[0], right)
-                    unitaries = unitaries[1:]
-
-
-                elif conf == 'ind_layer':
-                 
-                    for j in range(self.n):    
-                        deriv_unitary = np.matmul(derivs[0], right)
-                        deriv_unitary = np.matmul(left, deriv_unitary)
-                        deriv_state = np.matmul(deriv_unitary, init_state)
-                        deriv_states.append([deriv_state])
-        
-                        derivs = derivs[1:]
-            
-                        left = np.matmul(left, adj(unitaries[0]))
-                        right = np.matmul(unitaries[0], right)
-                        unitaries = unitaries[1:]
-
-            num_params = len(x)
-            """get first fubini term"""
-            fb1 = np.array([[0. for _ in range(num_params)] for _ in range(num_params)])
-
-            for i, states1 in enumerate(deriv_states):
-                for j, states2 in enumerate(deriv_states):
-                    if i > j:
-                        fb1[i,j] = fb1[j,i]
-                    else:
-                        entry = 0.
-                        for summand1 in states1:
-                            for summand2 in states2:
-                                """determine probability to measure 0 or 1 and according std"""
-                                inner = round(np.real(np.inner(np.conj(summand1), summand2)), 8)
-                                #p = 0.5*(inner + 1.)
-                                p = abs(inner)
-                                std = np.sqrt(2.*p*(1.-p) / sim_reps)
-                                entry += np.random.normal(loc=inner, scale=std)
-                            #fb1[i,j] = entry / 4.
-                        fb1[i,j] = entry
-                        
-            scalar_products = np.zeros(num_params)
-            for i, states in enumerate(deriv_states):
-                for summand in states:
-                    inner = round(np.real(np.inner(np.conj(vanilla_state), summand)), 8)
-                    p = 0.5*(inner + 1.)
-                    std = np.sqrt(2.*p*(1.-p) / sim_reps)
-                    result = np.random.normal(loc=inner, scale=std)
-                    
-                    scalar_products[i] += result
-            fb2 = np.outer(np.conj(scalar_products), scalar_products) / 4.
-   
-
-        """convert to float"""
-        #fb1 = convert_complex_to_float(fb1)
-        #if sim_reps == 0:
-        #fb2 = convert_complex_to_float(fb2)
-        """get full fubini-study metric"""
-        fb1 = np.real(fb1)
-        fb2 = np.real(fb2)
-        fb = fb1 - fb2
-
-        if blockwise:
-            for i in range(num_params):
-                for j in range(num_params):
-                    if abs(i-j) > max(i,j)%(block_size):
-                        fb[i,j] = 0.
-                        fb1[i,j] = 0.
-                        fb2[i,j] = 0.
-                         
-        return fb, fb1, fb2, proxis
-
-
     def linear_time_fubini(self, x, blockwise=False, block_size=None, test_angle=0.):
         sim_reps = self.sim_reps
         
@@ -745,6 +553,7 @@ class Optimizer:
                         left = np.matmul(left, adj(unitaries[0]))
                         right = np.matmul(unitaries[0], right)
                         unitaries = unitaries[1:]
+    
         
             num_params = len(x)
             """get first fubini term"""
@@ -776,12 +585,13 @@ class Optimizer:
         elif sim_reps > 0.:
             
             deriv_states = []
-            state_summands = []
+            """state_summands = []"""
 
             for i, conf in enumerate(self.circuit.param_config):
             
                 if conf == 'coll':
               
+                    state_summands = []
                     for j in range(self.n):
                         deriv_unitary = np.matmul(derivs[j], right)
                         deriv_unitary = np.matmul(left, deriv_unitary)
@@ -806,7 +616,7 @@ class Optimizer:
                         left = np.matmul(left, adj(unitaries[0]))
                         right = np.matmul(unitaries[0], right)
                         unitaries = unitaries[1:]
-
+                        
             num_params = len(x)
             """get first fubini term"""
             fb1 = np.array([[0. for _ in range(num_params)] for _ in range(num_params)])
@@ -840,27 +650,28 @@ class Optimizer:
                                 entry += np.random.normal(loc=np.real(inner), scale=std)
                         fb1[i,j] = entry
                         
-            scalar_products = np.zeros(num_params)
+            scalar_products = np.array([complex(0., 0.) for _ in range(num_params)])
             for i, states in enumerate(deriv_states):
-
-                #loc = sum([np.vdot(vanilla_state, state) for state in states])
-                #scalar_products[i] = np.random.normal(loc=np.real(loc), scale=0.)
                 
-                """ 
-                for summand in states:
-                    #inner = round(np.real(np.inner(np.conj(vanilla_state), summand)), 8)
-                    inner = np.vdot(vanilla_state, summand)
-                    #p = 0.5*(inner + 1.)
-                    #p = abs(inner)
-                    p = np.linalg.norm(inner) 
-                    #std = np.sqrt(2.*p*(1.-p) / sim_reps)
-                    std = np.sqrt(p*(1.-p) / sim_reps)
-                    #result = np.random.normal(loc=inner, scale=std)
-                    result = np.random.normal(loc=inner, scale=std)
+                for idx, summand in enumerate(states):
                     
-                    scalar_products[i] += result
-                """
-            #print(scalar_products)
+                    inner = np.vdot(summand, vanilla_state)
+                    
+                    p = np.real(inner)
+                    if p < 0:
+                        p = 0.
+                        
+                    std_real = np.sqrt(p*(1.-p) / sim_reps)
+                    p = np.imag(inner)
+                    if p < 0:
+                        p = 0.
+                    std_imag = np.sqrt(p*(1.-p) / sim_reps)
+                    
+                    result_real = np.random.normal(loc=np.real(inner), scale=std_real)
+                    result_imag = np.random.normal(loc=np.imag(inner), scale=std_imag)
+                    
+                    scalar_products[i] += complex(result_real, result_imag)
+            
             fb2 = np.outer(np.conj(scalar_products), scalar_products)
                 
          
@@ -868,6 +679,7 @@ class Optimizer:
         #fb1 = convert_complex_to_float(fb1)
         #if sim_reps == 0:
         #fb2 = convert_complex_to_float(fb2)
+        
         """get full fubini-study metric"""
         fb1 = np.real(fb1)
         fb2 = np.real(fb2)
@@ -883,9 +695,6 @@ class Optimizer:
                         fb2[i,j] = 0.
                          
         return fb, fb1, fb2
-
-
-
 
 
 
