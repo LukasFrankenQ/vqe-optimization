@@ -1,0 +1,49 @@
+import sys
+sys.path.append('../')
+import numpy as np
+from physics import Hamiltonian
+from optim import Optimizer
+from utils import Circuit, r, rcv, rc, get_init_state, get_rotations, get_unitaries
+from qiskit import QuantumCircuit, execute, Aer
+
+"""
+all_true= True
+
+n = 2
+p = 1
+param = np.pi/4.
+H = Hamiltonian(n, hamiltonian_type='transverse_ising', t=1.)
+
+init = get_rotations(n, axis='identity')
+exit = get_rotations(n, axis='identity')
+
+c = Circuit(n)
+
+for _ in range(p):
+    c.add_layer('x', 'ind')
+    c.add_layer('z', 'ind')
+    c.add_layer('y', 'ind')
+    c.add_layer('zz', 'coll')
+
+c.params = [param for _ in range(len(c.params))]
+opt = Optimizer(circuit=c, n=n, sim_reps=0, init=init, exit=exit)
+
+fb_lin, fb1_lin, fb2_lin = opt.linear_time_fubini(c.params, diagonal_only=False)
+
+print('fb1 lin:')
+print(r(fb1_lin))
+print('fb2 lin:')
+print(r(fb2_lin))
+print('fb lin:')
+print(r(fb_lin))
+"""
+n = 4
+a = np.array([complex(1., 0.)/np.sqrt(2**n) for _ in range(2**n)])
+b = np.array([complex(1., 0.)] + [complex(0., 0.) for _ in range(2**n - 1)])
+
+print('vanilla scalar product:')
+print(np.inner(np.conj(a), a)) 
+
+
+
+
