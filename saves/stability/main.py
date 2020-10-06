@@ -6,18 +6,26 @@ from utils import adj, plot_fubini, get_rotations, rc, get_unitaries
 from qiskit import Aer, execute, QuantumCircuit
 
 
+def smallest(liste, n=3):
+    mins = []
+    liste.sort(reverse=False)
+    for i in range(n):
+        mins.append(round(liste[i], 4))
+    return mins
+
+
 n = 8
 p = 6
 
 angle = 'identity'
 
-block_sizes = [int(3*n + 1), int(2*3*n + 2), int(3 + 3*n*3), int(p + p*n*3), 1]
-rep_list = [100000, 10000, 1000, 100]
+block_sizes = [int(p + p*n*3), 20, int(3*n + 1), int(2*3*n + 2), 15, 1]
+rep_list = [100000, 10000, 1000, 100, 0]
 
 for reps in rep_list:
     for block_size in block_sizes:
 
-        grad_reps = reps
+        grad_reps = 0
         fb_reps = reps
 
         n = 8
@@ -27,8 +35,11 @@ for reps in rep_list:
         blockwise = True
         diagonal_only = False
         fubini = True
-        runs = 5
-        reg_param = 5e-2
+        get_proxis = True
+        runs = 3
+        if reps == 0:
+            runs = 1
+        reg_param = 0.05
         lr = 0.1
         init_noise = 0.0
 
@@ -56,6 +67,7 @@ for reps in rep_list:
         scores = []
         norms_pre = []
         norms_post = []
+        proxis_data = []
 
         for _ in range(runs):
         
@@ -70,6 +82,7 @@ for reps in rep_list:
             print('grad reps: ', grad_reps)
             print('fubini reps: ', fb_reps)
             print('reg_param: ', reg_param)
+            print('getting proxis: ', get_proxis)
             print('Begin run {}/{} for rotation {}'.format(_+1, runs, angle))
             print('-----------------------------------')
             score_data = []
@@ -84,8 +97,8 @@ for reps in rep_list:
                 grad_norm = np.linalg.norm(np.array(grad))   
                 norm_pre_data.append(grad_norm)
                 if fubini:
-                    fb, fb1, fb2 = opt.linear_time_fubini(params, blockwise=blockwise, block_size=block_size)
-                    fb = (1.-reg_param) * fb + np.identity(len(grad)) * reg_param
+                    fb, fb1, fb2, proxis = opt.linear_time_fubini(params, blockwise=blockwise, block_size=block_size, get_proxis=get_proxis)
+                    fb = fb + np.identity(len(grad)) * reg_param
                     fb = np.linalg.inv(fb)
                     grad = np.matmul(fb, np.array(grad))
                 if not fubini:
@@ -94,11 +107,11 @@ for reps in rep_list:
                 grad_norm = np.linalg.norm(grad)   
  
                 score = opt.eval_params(H, params)
-                print("Iteration {}/{}; Score {}; Grad Norm {}".format(i+1, iters, score, grad_norm))
+                print("Iteration {}/{}; Score {}; Grad Norm pre vs post {} vs {}".format(i+1, iters, score, norm_pre_data[-1], grad_norm))
 
                 score_data.append(score)
                 norm_post_data.append(grad_norm)
-
+                proxis_data.append(proxis)
 
             scores += [np.array(score_data)]
             norms_pre += [np.array(norm_pre_data)]
@@ -110,6 +123,7 @@ for reps in rep_list:
             np.save(path+filename+'scores', np.array(scores))
             np.save(path+filename+'grad_pre_norm', np.array(norms_pre))
             np.save(path+filename+'grad_post_norm', np.array(norms_post))
+            np.save(path+filename+'proxis', np.array(proxis_data))
 
 
 
