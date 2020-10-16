@@ -125,3 +125,41 @@ class Metric:
         plt.show()
 
 
+def get_overlap(self, metric=None, cutoff=0):
+        """
+        computes the inner products of eigenstate-pairs of a) intra-group of 
+        non-singular parts of the metric b) intra-group of singular parts and c) 
+        inter-group between both previous groups
+        
+        In:
+            metric: dim x dim np.array; if not working on self.metric
+            cutoff: float: condition abs(eigval) < cutoff separated into the groups
+            
+        Out:
+            list for pairs a)
+            list for pairs b)
+            list for pairs c)
+        """        
+        
+        F = metric or self.metric
+        eigvals, eigvecs = np.linalg.eig(F)
+        
+        """separate into groups"""
+        sing_vecs = eigvecs[eigvals <= cutoff]
+        nonsing_vecs = eigvecs[eigvals > cutoff]
+        
+        """get scalar products"""
+        inners_sing = []
+        for i, vecs in enumerate(sing_vecs[:-1]):
+            inners_sing += [np.inner(vecs, other) for other in sing_vecs[i+1:]]
+            
+        inners_non = []
+        for i, vecs in enumerate(nonsing_vecs[:-1]):
+            inners_non += [np.inner(vecs, other) for other in nonsing_vecs[i+1:]]
+            
+        inners_inter = []
+        for vecs in nonsing_vecs:
+            inners_inter += [np.inner(vecs, other) for other in sing_vecs]
+
+        return np.array(inners_sing), np.array(inners_non), np.array(inners_inter)
+
