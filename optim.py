@@ -493,7 +493,7 @@ class Optimizer:
 
 
 
-    def linear_time_fubini(self, x, blockwise=False, block_size=None, test_angle=0.):
+    def linear_time_fubini(self, x, blockwise=False, block_size=None, get_proxis=False, one_block=False):
         sim_reps = self.sim_reps
         
         unitaries = get_unitaries(self.circuit, mode='params', params=x)
@@ -574,8 +574,8 @@ class Optimizer:
                         fb1[j,i] = np.conj(fb1[i,j])
 
             """get second fubini term"""    
-            inner_products = [np.vdot(deriv_states[i], vanilla_state) for i in range(num_params)]
-            fb2 = np.outer(np.conj(inner_products), inner_products)
+            scalar_products = [np.vdot(deriv_states[i], vanilla_state) for i in range(num_params)]
+            fb2 = np.outer(np.conj(scalar_products), scalar_products)
 
             """
             simulates measurement based computation of the Fubini-study metric 
@@ -693,9 +693,17 @@ class Optimizer:
                         fb[i,j] = 0.
                         fb1[i,j] = 0.
                         fb2[i,j] = 0.
-                         
-        return fb, fb1, fb2
 
+        if one_block:
+            fb[:-block_size, :-block_size] = np.identity(num_params - block_size)
+            block = fb[num_params - block_size:, num_params - block_size:]
+            for i in range(int(num_params/block_size)):
+                fb[i*block_size:(i+1)*block_size, i*block_size:(i+1)*block_size] = block
+
+        if not get_proxis:
+            return fb, fb1, fb2
+        else:
+            return fb, fb1, fb2, scalar_products
 
 
 
