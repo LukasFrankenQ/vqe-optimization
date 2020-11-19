@@ -6,13 +6,21 @@ from utils import adj, plot_fubini, get_rotations, rc, get_unitaries
 from qiskit import Aer, execute, QuantumCircuit
 
 
+def smallest(liste, n=3):
+    mins = []
+    liste.sort(reverse=False)
+    for i in range(n):
+        mins.append(round(liste[i], 4))
+    return mins
+
+
 n = 8
 p = 6
 
 angle = 'identity'
 
-block_sizes = [int(p + p*n*3), 20, int(3*n + 1), int(2*3*n + 2), 15, 1]
-rep_list = [100000, 10000, 1000, 100, 0]
+block_sizes = [25]
+rep_list = [0, 10000, 1000, 100]
 
 for reps in rep_list:
     for block_size in block_sizes:
@@ -26,9 +34,13 @@ for reps in rep_list:
         rot = angle
         blockwise = True
         diagonal_only = False
+        one_block = True
         fubini = True
-        runs = 1
-        reg_param = 0.1
+        get_proxis = True
+        runs = 3
+        if reps == 0:
+            runs = 1
+        reg_param = 0.05
         lr = 0.1
         init_noise = 0.0
 
@@ -56,6 +68,7 @@ for reps in rep_list:
         scores = []
         norms_pre = []
         norms_post = []
+        proxis_data = []
 
         for _ in range(runs):
         
@@ -65,11 +78,13 @@ for reps in rep_list:
             print('p: ', p)
             print('fubini: ', fubini)
             print('blockwise: ', blockwise)
+            print('one block: ', one_block)
             print('rot: ', rot)
             print('block size: ', block_size)
             print('grad reps: ', grad_reps)
             print('fubini reps: ', fb_reps)
             print('reg_param: ', reg_param)
+            print('getting proxis: ', get_proxis)
             print('Begin run {}/{} for rotation {}'.format(_+1, runs, angle))
             print('-----------------------------------')
             score_data = []
@@ -84,7 +99,7 @@ for reps in rep_list:
                 grad_norm = np.linalg.norm(np.array(grad))   
                 norm_pre_data.append(grad_norm)
                 if fubini:
-                    fb, fb1, fb2 = opt.linear_time_fubini(params, blockwise=blockwise, block_size=block_size)
+                    fb, fb1, fb2, proxis = opt.linear_time_fubini(params, blockwise=blockwise, block_size=block_size, get_proxis=get_proxis, one_block=one_block)
                     fb = fb + np.identity(len(grad)) * reg_param
                     fb = np.linalg.inv(fb)
                     grad = np.matmul(fb, np.array(grad))
@@ -98,18 +113,19 @@ for reps in rep_list:
 
                 score_data.append(score)
                 norm_post_data.append(grad_norm)
-
+                proxis_data.append(proxis)
 
             scores += [np.array(score_data)]
             norms_pre += [np.array(norm_pre_data)]
             norms_post += [np.array(norm_post_data)]
 
-            path = 'saves/stability_01_reg/'
-            filename = 'tfi_'+str(n)+'_qubits_'+str(p)+'_layers_fubini_'+str(fubini)+"_reps_"+str(reps)+'_reg_param_'+str(reg_param)+'_blocksize_'+str(block_size)+'_'
+            path = 'saves/stability/'
+            filename = 'tfi_'+str(n)+'_qubits_'+str(p)+'_layers_fubini_'+str(fubini)+"_reps_"+str(reps)+'_reg_param_'+str(reg_param)+'_one_block_for_full_fubini_'+str(one_block)+'_'
 
             np.save(path+filename+'scores', np.array(scores))
             np.save(path+filename+'grad_pre_norm', np.array(norms_pre))
             np.save(path+filename+'grad_post_norm', np.array(norms_post))
+            np.save(path+filename+'proxis', np.array(proxis_data))
 
 
 

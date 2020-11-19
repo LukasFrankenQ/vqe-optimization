@@ -694,6 +694,13 @@ class Optimizer:
                         fb1[i,j] = 0.
                         fb2[i,j] = 0.
 
+
+        if smart:
+            cutoff = 0.05
+            for i, entry in enumerate(np.diag)
+
+
+
         if one_block:
             fb[:-block_size, :-block_size] = np.identity(num_params - block_size)
             block = fb[num_params - block_size:, num_params - block_size:]
