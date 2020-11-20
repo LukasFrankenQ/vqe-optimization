@@ -493,7 +493,8 @@ class Optimizer:
 
 
 
-    def linear_time_fubini(self, x, blockwise=False, block_size=None, get_proxis=False, one_block=False):
+    def linear_time_fubini(self, x, blockwise=False, block_size=None, get_proxis=False, one_block=False,
+                          smart=None):
         sim_reps = self.sim_reps
         
         unitaries = get_unitaries(self.circuit, mode='params', params=x)
@@ -695,10 +696,11 @@ class Optimizer:
                         fb2[i,j] = 0.
 
 
-        if smart:
-            cutoff = 0.05
-            for i, entry in enumerate(np.diag)
-
+        if smart is not None:
+            not_used = np.diag(fb) < smart
+            fb[not_used] = 0.
+            fb[:, not_used] = 0.
+            fb[not_used, not_used] = 1.
 
 
         if one_block:
