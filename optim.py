@@ -701,6 +701,7 @@ class Optimizer:
             fb[not_used] = 0.
             fb[:, not_used] = 0.
             fb[not_used, not_used] = 1.
+            num_cutoffs = np.count_nonzero(not_used)
 
 
         if one_block:
@@ -709,8 +710,10 @@ class Optimizer:
             for i in range(int(num_params/block_size)):
                 fb[i*block_size:(i+1)*block_size, i*block_size:(i+1)*block_size] = block
 
-        if not get_proxis:
+        if not get_proxis and smart is None:
             return fb, fb1, fb2
+        if smart is not None:
+            return fb, fb1, fb2, num_cutoffs
         else:
             return fb, fb1, fb2, scalar_products
 
