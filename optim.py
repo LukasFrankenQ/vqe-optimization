@@ -494,7 +494,7 @@ class Optimizer:
 
 
     def linear_time_fubini(self, x, blockwise=False, block_size=None, get_proxis=False, one_block=False,
-                          smart=None):
+                          smart=None, no_commuters=False):
         sim_reps = self.sim_reps
         
         unitaries = get_unitaries(self.circuit, mode='params', params=x)
@@ -642,12 +642,13 @@ class Optimizer:
                             for summand2 in states2:
                                 """determine probability to measure 0 or 1 and according std"""
                                 inner = round(np.real(np.inner(np.conj(summand1), summand2)), 8)
-                                #inner = round(np.vdot(summand1, summand2), 8)
-                                #p = 0.5*(inner + 1.)
                                 p = abs(inner)
-                                #std = np.sqrt(2.*p*(1.-p) / sim_reps)
                                 std = np.sqrt(p*(1.-p) / sim_reps)
-                                #entry += np.random.normal(loc=inner, scale=std)
+  
+                                """ """
+                                #std = np.sqrt((1 - p**2) / sim_reps)
+                                """ """
+
                                 entry += np.random.normal(loc=np.real(inner), scale=std)
                         fb1[i,j] = entry
                         
@@ -697,18 +698,103 @@ class Optimizer:
 
         diag = np.diag(fb)
 
+     
+        if no_commuters:
+            n = self.n 
+            #print('Original metric: \n', np.array_str(fb, precision=2))
+            new_metric = np.zeros_like(fb)
+          
+            np.fill_diagonal(new_metric, np.diag(fb))
+            num_blocks = int(num_params / block_size)
+            
+            for i in range(num_blocks):
+                block_init = i*block_size 
+                """first off diagonal"""
+                for j in range(2*n):
+                    new_metric[block_init + j + n, block_init + j] = fb[block_init + j + n, block_init + j]
+                    new_metric[block_init + j, block_init + j + n] = fb[block_init + j, block_init + j + n]
+                
+                """second off diagonal"""
+                for j in range(n):
+                    new_metric[block_init + j + 2*n, block_init + j] = fb[block_init + j + 2*n, block_init + j]
+                    new_metric[block_init + j, block_init + j + 2*n] = fb[block_init + j, block_init + j + 2*n]
+
+                """third off diagonal (correlation generators)"""
+                for j in range(block_size-1):
+                    new_metric[block_init + j, block_init + block_size - 1] = fb[block_init + j, block_init + block_size - 1]
+                    new_metric[block_init + block_size - 1, block_init + j] = fb[block_init + block_size - 1, block_init + j]
+         
+            fb = new_metric
+            #print('Adapted Metric: \n', np.array_str(fb, precision=2))
+ 
+
+
+
+
+
+
+
+
+        #print('Eigenvalue Vanilla')
+        #eigs = np.linalg.eigvalsh(fb)
+        #print(eigs)
+        #print('Regularized Eigvals')
+        #eigs = np.linalg.eigvalsh(fb + 0.05*np.identity(len(fb)))
+        #print(eigs)
+        #print('Smart Eigvals')
+
+        #print('Before Smart: ', fb)  
+
         if smart is not None:
-            not_used = np.diag(fb) < smart
+            diag = np.diag(fb)
+            not_used = diag < smart
+ 
+            print('Pre smart fb: \n', np.array_str(fb, precision=2))
+            print('first line: \n', np.array_str(fb[0], precision=2))
+            print(np.linalg.eigvalsh(fb))
+            print('Pre smart')
+            try:
+                np.linalg.inv(fb)
+                print('Inversion sucessful')
+            except:
+                print('Inversion disfunctional atm')
+
+
             fb[not_used] = 0.
-            fb[:, not_used] = 0.
-            fb[not_used, not_used] = 1.
+            fb[:,not_used] = 0.
+            fb[not_used, not_used] = smart
 
+            """Worrisome others"""
+            worrisome = diag > 0.9
+            fb[worrisome, worrisome] += smart 
+            
+            print('Post smart')
+            try:
+                np.linalg.inv(fb)
+                print('Inversion sucessful')
+            except:
+                print('Inversion disfunctional atm')
+            print('Post smart fb: \n', np.array_str(fb, precision=2))
+            print(np.linalg.eigvalsh(fb))
+            """
+            V, eigs, U = np.linalg.svd(fb)
+            not_used = eigs < smart
+            eigs[not_used] = smart
+            V[not_used], U[not_used] = 0., 0.
+            V[:,not_used], U[:,not_used] = 0., 0.
+            V[not_used, not_used], U[not_used, not_used] = 1., 1.
+            sigma = np.identity(len(eigs))
+            np.fill_diagonal(sigma, eigs)
+            print('Sigma: ', sigma)
+            print('U: ',U)
+            print('V: ',V)
+            fb = np.matmul(V, np.matmul(sigma, U))
+            """
 
-        if one_block:
-            fb[:-block_size, :-block_size] = np.identity(num_params - block_size)
-            block = fb[num_params - block_size:, num_params - block_size:]
-            for i in range(int(num_params/block_size)):
-                fb[i*block_size:(i+1)*block_size, i*block_size:(i+1)*block_size] = block
+        #print('After Smart: ', fb)  
+      
+        #eigs = np.linalg.eigvalsh(fb)
+        #print(eigs)
 
         return fb, fb1, fb2, diag
 

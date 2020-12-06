@@ -6,23 +6,22 @@ from utils import adj, plot_fubini, get_rotations, rc, get_unitaries
 from qiskit import Aer, execute, QuantumCircuit
 
 
-n = 8
-p = 6
 
-alphas = [0.001, 0.005, 0.01, 0.05]
+reg_params = [0.05, 0.04, 0.03, 0.02, 0.01]
 block_sizes = [25]
 
-for alpha in alphas:
+for reg_param in reg_params:
     for block_size in block_sizes:
 
         reps = 100000
         grad_reps = reps
         fb_reps = reps
-
+        alpha = reg_param
+        alpha = None
         n = 8
         p = 6
         iters = 200
-        angle = 'identity'
+        angle = '45'
         rot = angle
         blockwise = True
         diagonal_only = False
@@ -32,9 +31,9 @@ for alpha in alphas:
         runs = 3
         if reps == 0:
             runs = 1
-        reg_param = 0.05
+        
         lr = 0.1
-        init_noise = 0.0
+        init_noise = 0.
 
         init = get_rotations(n, axis='y')
         exit = get_rotations(n, axis='identity')
@@ -60,7 +59,7 @@ for alpha in alphas:
         scores = []
         norms_pre = []
         norms_post = []
-        num_cutoff = []
+        fb_diag = []
 
         for _ in range(runs):
         
@@ -80,7 +79,7 @@ for alpha in alphas:
             score_data = []
             norm_pre_data = []
             norm_post_data = []
-            num_cutoff_data = []
+            fb_diagonal_data = []
          
             score = opt.eval_params(H, params)
             print("Initial Score {}".format(score))
@@ -90,8 +89,8 @@ for alpha in alphas:
                 grad_norm = np.linalg.norm(np.array(grad))   
                 norm_pre_data.append(grad_norm)
                 
-                fb, fb1, fb2, num_cutoffs = opt.linear_time_fubini(params, blockwise=blockwise, block_size=block_size, smart=alpha)
-                #fb = fb + np.identity(len(grad)) * reg_param
+                fb, fb1, fb2, diag = opt.linear_time_fubini(params, blockwise=blockwise, block_size=block_size, smart=alpha, no_commuters=True)
+                fb = fb + np.identity(len(grad)) * reg_param
                 fb = np.linalg.inv(fb)
                 grad = np.matmul(fb, np.array(grad))
                 params = list(np.array(params) - lr * grad)
@@ -99,24 +98,25 @@ for alpha in alphas:
  
                 score = opt.eval_params(H, params)
                 print("Iteration {}/{}; Score {}; Grad Norm pre vs post {} vs {}".format(i+1, iters, score, norm_pre_data[-1], grad_norm))
+                
 
                 score_data.append(score)
+                fb_diagonal_data.append(fb)
                 norm_post_data.append(grad_norm)
-                num_cutoff_data.append(num_cutoffs)
  
 
             scores += [np.array(score_data)]
             norms_pre += [np.array(norm_pre_data)]
             norms_post += [np.array(norm_post_data)]
-            num_cutoff += [np.array(num_cutoff_data)]
+            fb_diag += [np.array(fb_diagonal_data)] 
 
-            path = 'smart_algorithm_saves/'
-            filename = 'tfi_'+str(n)+'_qubits_'+str(p)+"_layers_reps_"+str(reps)+'_reg_param_'+str(reg_param)+'_blocksize_'+str(block_size)+'_smart_'+str(alpha)+'_'
+            path = 'commuting_algorithm_saves/'
+            filename = 'tfi_'+str(n)+'_qubits_'+str(p)+"_layers_reps_"+str(reps)+'_saved_full_metric_reg_param_'+str(reg_param)+'_blocksize_'+str(block_size)+'_'
 
             np.save(path+filename+'scores', np.array(scores))
             np.save(path+filename+'grad_pre_norm', np.array(norms_pre))
             np.save(path+filename+'grad_post_norm', np.array(norms_post))
-            np.save(path+filename+'num_cutoffs', np.array(num_cutoff))
+            #np.save(path+filename+'fb', np.array(fb_diag))
 
 
 
